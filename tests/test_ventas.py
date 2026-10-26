@@ -242,7 +242,10 @@ def test_cambiar_condicion_recalcula_cuenta_total(correr):
     lote, ctx = correr(MINERA, 'mixta', archivos('dolares_set'))
     f = fila(lote, 'E001-131')
     aplicar_cambio(f, ctx, condicion='CRE')
-    assert f.cuenta_total == '1212' and f.glosa.endswith('AL CREDITO')
+    assert f.cuenta_total == '1212' and f.glosa == 'SEAL'          # glosa con el detalle del ítem
+    ctx.cfg.glosa_detalle = False
+    aplicar_cambio(f, ctx, condicion='CON')
+    assert f.glosa == 'VENTA DE MERCADERIAS AL CONTADO'            # glosa general
 
 
 def test_marcar_anticipo_a_mano(correr):
@@ -305,3 +308,34 @@ def test_cuenta_borrada_o_inexistente_va_a_revisar(correr):
     assert f.estado == 'revisar'
     aplicar_cambio(f, ctx, cuenta_total='1212')
     assert f.estado == 'ok'
+
+
+# ----------------------------------------------------------------------------- glosa y centro de costos
+def test_glosa_con_detalle(correr, tc):
+    from motor.clasificador_ventas import detalle_items
+    lote, ctx = correr(ESTUDIO, 'servicios', archivos('servicios_oct'), '2026-10',
+                       tc_extra=[TC(date(2026, 10, 22), 3.390, 3.400, 'prueba')])
+    assert fila(lote, 'E001-1100').glosa == 'POR SERVICIO CONTABLE MES SETIEMBRE'
+    assert fila(lote, 'E001-1099').glosa == 'POR SERVICIO CONTABLE Y LABORAL MES SETIEMBRE'
+    joy, _ = correr(JOYERIA, 'comercial', archivos('joyeria_set'))
+    largo = fila(joy, 'FON1-19')                                     # descripción de joya muy larga → general
+    assert largo.glosa == 'VENTA DE MERCADERIAS AL CONTADO'
+    assert fila(joy, 'BOP1-4480').glosa == 'ANULADO'
+    assert all(len(f.glosa) <= 60 for f in lote.filas + joy.filas)
+    assert detalle_items(None) == ''
+
+
+def test_centro_de_costos_opcional(correr):
+    arch = [('s.xml', comprobante('F001-1', items=(('SERVICIO DE ASESORIA CONTABLE', 100.0, 'ZZ'),))),
+            ('m.xml', comprobante('F001-2', items=(('ANILLO DE PLATA', 50.0, 'NIU'),)))]
+    sin, ctx0 = correr(ESTUDIO, 'mixta', arch)
+    assert all(f.centro_costos == '' for f in sin.filas)            # desactivado por defecto
+    lote, ctx = correr(ESTUDIO, 'mixta', arch, usar_centro_costos=True, cc_servicios='0104', cc_mercaderia='0105')
+    s, m = fila(lote, 'F001-1'), fila(lote, 'F001-2')
+    assert (s.centro_costos, m.centro_costos) == ('0104', '0105')
+    x = fila_excel(s, ctx.cfg)
+    assert (col(x, 'Z'), col(x, 'AA')) == ('0104', '')              # columna Z, nunca la AA
+    aplicar_cambio(m, ctx, cuenta_base='7032103')                    # pasa a servicio → cambia el CC
+    assert m.centro_costos == '0104'
+    aplicar_cambio(m, ctx, centro_costos='0999')                     # o se edita a mano
+    assert m.centro_costos == '0999'

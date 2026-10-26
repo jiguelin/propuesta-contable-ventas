@@ -8,6 +8,7 @@ from dataclasses import asdict
 
 from .clasificador_ventas import ConfigEmpresa, Contexto, actividad_desde_rubro, firma
 from .conceptos import CONCEPTOS, Destino, sugerir_mapa
+from .centros_costos import leer_centros_excel, sugerir as sugerir_centros
 from .db import BaseDatos
 from .entidades import Entidad, Entidades, RegistroExterior, leer_entidades_excel
 from .excel_ventas import generar_importacion, generar_reporte, generar_revision
@@ -122,6 +123,26 @@ class Servicio:
 
     def entidades(self, ruc: str) -> Entidades:
         return Entidades([Entidad(r['codigo'], r['nombre'], r.get('direccion', '')) for r in self.db.entidades(ruc)])
+
+    # ------------------------------------------------------------ centros de costos (opcional)
+    def cargar_centros(self, ruc: str, data: bytes) -> tuple[list[dict], list[str]]:
+        items, ruc_xl = leer_centros_excel(data)
+        if not items:
+            raise ValueError('No se encontraron centros de costos en el archivo.')
+        avisos = []
+        if ruc_xl and ruc_xl != ruc:
+            avisos.append(f'El Excel dice RUC {ruc_xl} y la empresa es {ruc}.')
+        self.db.guardar_centros(ruc, items)
+        cfg = self.config(ruc)
+        sug = sugerir_centros(items)
+        if sug['servicios'] and not cfg.cc_servicios:
+            cfg.cc_servicios = sug['servicios']
+        if sug['mercaderia'] and not cfg.cc_mercaderia:
+            cfg.cc_mercaderia = sug['mercaderia']
+        cfg.usar_centro_costos = True
+        self.guardar_config(cfg)
+        avisos.append(f'Propuesta: servicios {cfg.cc_servicios or "(ninguno)"} · mercaderías {cfg.cc_mercaderia or "(ninguno)"}. Puede cambiarlos.')
+        return items, avisos
 
     # ------------------------------------------------------------ tipo de cambio
     def cargar_tc(self, nombre: str, data: bytes) -> list[TC]:

@@ -10,8 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from decimal import Decimal, ROUND_HALF_UP
 
-from .clasificador_ventas import (TIPOS_VENTA, ConfigEmpresa, Contexto, Fila, clasificar, clave, cuenta_total,
-                                  glosa_de, separar)
+from .clasificador_ventas import (TIPOS_VENTA, ConfigEmpresa, Contexto, Fila, centro_costos, clasificar, clave,
+                                  cuenta_total, glosa_de, separar)
 from .conceptos import CONCEPTOS
 from .correlativos import buscar_huecos, id_normal
 from .lector import Lectura
@@ -53,6 +53,7 @@ def _fila_anulada(f: Fila, ctx: Contexto, motivo: str, estado: str = 'anulado'):
         f.tc, f.tc_exacto = ctx.tc.valor(f.fecha, cfg.tc_tipo)
     f.medio_pago, f.glosa, f.confianza = '', 'ANULADO', 100
     f.fecha_venc = f.fecha
+    f.centro_costos = centro_costos(f, ctx)
 
 
 def cuadre(f: Fila) -> Decimal:
@@ -202,7 +203,7 @@ def aplicar_cambio(f: Fila, ctx: Contexto, **cambios):
         f.condicion = cambios['condicion']
         if not f.total_manual:
             f.cuenta_total = cuenta_total(f, ctx)
-        f.glosa = glosa_de(f)
+        f.glosa = glosa_de(f, ctx.cfg.glosa_detalle)
     if 'cuenta_total' in cambios and cambios['cuenta_total'] != f.cuenta_total:
         f.cuenta_total, f.total_manual = cambios['cuenta_total'], True
         if f.estado == 'ok' and not ctx.plan.get(f.cuenta_total):
@@ -221,7 +222,9 @@ def aplicar_cambio(f: Fila, ctx: Contexto, **cambios):
                 from .clasificador_ventas import clasificar as _cl
                 g = _cl(f.c, ctx, {}, {})
                 f.cuenta_base, f.concepto = g.cuenta_base, g.concepto
-        f.glosa = glosa_de(f)
+        f.glosa = glosa_de(f, ctx.cfg.glosa_detalle)
+    if 'centro_costos' in cambios:
+        f.centro_costos = (cambios['centro_costos'] or '')[:9]
     if 'glosa' in cambios:
         f.glosa = (cambios['glosa'] or '')[:60]
     if 'confirmado' in cambios:
@@ -231,3 +234,5 @@ def aplicar_cambio(f: Fila, ctx: Contexto, **cambios):
             _fila_anulada(f, ctx, 'Marcado como anulado por el usuario', 'hueco_anulado')
         elif cambios['estado'] == 'faltante':
             f.estado, f.motivo, f.glosa = 'faltante', 'Marcado por el usuario: falta el XML', 'XML FALTANTE'
+    if ('cuenta_base' in cambios or 'es_anticipo' in cambios) and 'centro_costos' not in cambios:
+        f.centro_costos = centro_costos(f, ctx)

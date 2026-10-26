@@ -71,6 +71,11 @@ class ConfigEmpresa:
     genericos: list[str] = field(default_factory=lambda: list(GENERICOS_DEFECTO))
     vinculados: list[str] = field(default_factory=list)
     alerta_boleta_sin_dni: float = 700.0
+    glosa_detalle: bool = True              # glosa con el texto de los ítems cuando cabe en 60 caracteres
+    usar_centro_costos: bool = False        # opcional: columna Z según el tipo de venta
+    cc_servicios: str = ''                  # ej. 0104 VENTA SERVICIOS
+    cc_mercaderia: str = ''                 # ej. 0105 VENTA PRODUCTOS
+    cc_productos: str = ''                  # productos terminados (si está vacío se usa el de mercadería)
     version_config: int = 2
 
     @classmethod
@@ -144,6 +149,7 @@ class Fila:
     base_manual: bool = False
     total_manual: bool = False
     confirmado: bool = False         # los huecos propuestos como anulados se exportan solo si se confirman
+    centro_costos: str = ''          # columna Z (opcional, por empresa)
 
     @property
     def id(self) -> str:
@@ -364,9 +370,49 @@ def regla_aplicable(c: Comprobante, ctx: Contexto) -> dict | None:
     return None
 
 
-def glosa_de(f: Fila) -> str:
+def detalle_items(c: Comprobante | None, limite: int = 60) -> str:
+    """Texto de los ítems para la glosa, si cabe en `limite` caracteres; si no, ''.
+
+    Un ítem → su descripción. Varios ítems parecidos se combinan por sus partes comunes:
+    "POR SERVICIO CONTABLE MES SETIEMBRE" + "POR SERVICIO LABORAL MES SETIEMBRE"
+      → "POR SERVICIO CONTABLE Y LABORAL MES SETIEMBRE".
+    """
+    if c is None or not c.lineas:
+        return ''
+    descs = []
+    for l in c.lineas:
+        d = limpiar(l.descripcion, True, 0)
+        if d and d not in descs:
+            descs.append(d)
+    if not descs:
+        return ''
+    if len(descs) == 1:
+        return descs[0] if len(descs[0]) <= limite else ''
+    partes = [d.split() for d in descs]
+    pre = 0
+    while all(len(p) > pre for p in partes) and len({p[pre] for p in partes}) == 1:
+        pre += 1
+    suf = 0
+    while all(len(p) - suf > pre for p in partes) and len({p[-1 - suf] for p in partes}) == 1:
+        suf += 1
+    medios = [' '.join(p[pre:len(p) - suf]) for p in partes]
+    if all(medios):
+        combinado = ' '.join(x for x in (' '.join(partes[0][:pre]), ' Y '.join(medios),
+                                         ' '.join(partes[0][len(partes[0]) - suf:]) if suf else '') if x)
+        if len(combinado) <= limite:
+            return combinado
+    unido = ' / '.join(descs)
+    return unido if len(unido) <= limite else ''
+
+
+def glosa_de(f: Fila, detalle: bool = True) -> str:
     if f.estado in ('anulado', 'hueco_anulado'):
         return 'ANULADO'
+    if detalle and f.c is not None:
+        prefijo = {'07': 'NC ', '08': 'ND '}.get(f.tipo, 'ANTICIPO ' if f.es_anticipo else '')
+        txt = detalle_items(f.c, 60 - len(prefijo))
+        if txt:
+            return limpiar(prefijo + txt, True, 60)
     if f.es_anticipo:
         base = 'ANTICIPO DE CLIENTE'
     elif f.tipo == '07':
@@ -386,6 +432,29 @@ def glosa_de(f: Fila) -> str:
     if f.tipo in ('01', '03') and not f.es_anticipo:
         base += ' AL CONTADO' if f.condicion == 'CON' else ' AL CREDITO'
     return limpiar(base, True, 60)
+
+
+def concepto_de_cuenta(cuenta: str, ctx: 'Contexto') -> str:
+    """Concepto del mapa al que pertenece una cuenta (directa o como subcuenta de un grupo)."""
+    for k, d in ctx.mapa.items():
+        if d and (d.cuenta == cuenta or cuenta in d.hojas):
+            return k
+    return ''
+
+
+def centro_costos(f: Fila, ctx: 'Contexto') -> str:
+    """Columna Z: centro de costos según el tipo de venta, si la empresa lo usa (opcional)."""
+    cfg = ctx.cfg
+    if not cfg.usar_centro_costos or f.es_anticipo or f.estado in ('faltante', 'excluido'):
+        return ''
+    con = concepto_de_cuenta(f.cuenta_base, ctx) or f.concepto
+    if con.startswith('SERVICIO'):
+        return cfg.cc_servicios
+    if con.startswith('VENTA_PT'):
+        return cfg.cc_productos or cfg.cc_mercaderia
+    if con.startswith('VENTA_MERC'):
+        return cfg.cc_mercaderia
+    return ''
 
 
 def cuenta_total(f: Fila, ctx: Contexto) -> str:
@@ -517,5 +586,6 @@ def clasificar(c: Comprobante, ctx: Contexto, anticipos_ref: dict[str, str], lot
         f.avisos.append(f'Operación gratuita por {c.gratuitas}: no se registra base')
     if 0 < f.confianza < 75 and f.estado == 'ok':
         f.estado, f.motivo = 'revisar', 'Confianza baja: confirme la cuenta'
-    f.glosa = glosa_de(f)
+    f.glosa = glosa_de(f, ctx.cfg.glosa_detalle)
+    f.centro_costos = centro_costos(f, ctx)
     return f

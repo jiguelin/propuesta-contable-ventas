@@ -42,6 +42,8 @@ XML / ZIP ─▶ lector UBL (corrige codificación) ─▶ ¿es de la empresa y 
 | Tipo de cambio | En todas las filas (soles y dólares), el del día de emisión o el inmediato anterior. |
 | Moneda | Cada comprobante en su moneda: soles en soles (V = S) y dólares en dólares (V = D, W = total en US$). |
 | Notas de crédito | Importes en positivo; el tipo 07 indica que es nota de crédito. R–U con el documento modificado. |
+| Glosa | El texto del comprobante si cabe en 60 caracteres (varios ítems parecidos se combinan: "POR SERVICIO CONTABLE Y LABORAL MES SETIEMBRE"); si no, una glosa general. Se puede desactivar por empresa. |
+| Centro de costos | Opcional por empresa (interruptor en ① Empresa): se sube el Excel de centros de costos y se elige el de servicios y el de mercaderías. Va en la columna Z; la AA queda vacía. |
 | Cuentas | Siempre del plan de la empresa. Orden: regla de la empresa → memoria de correcciones → señales del XML → actividad/rubro → IA (opcional, solo entre cuentas reales). |
 
 ## Publicar en Streamlit Community Cloud

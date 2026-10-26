@@ -183,6 +183,9 @@ with t_emp:
         nc_neg = c2.checkbox('Notas de crédito en negativo (normalmente no)', cfg.nc_negativo,
                              help='Por defecto van en positivo: el tipo 07 indica que es nota de crédito.')
         ant = c2.checkbox('Anticipos a 1221 y asiento Debe 1221 / Haber 70 en la factura final', cfg.anticipo_pasivo)
+        glo = c2.checkbox('Glosa con el detalle del comprobante (si cabe en 60 caracteres)', cfg.glosa_detalle,
+                          help='Ej.: "POR SERVICIO CONTABLE MES SETIEMBRE". Si no cabe, se usa una glosa general '
+                               '("PRESTACION DE SERVICIOS AL CREDITO").')
         c3, c4, c5 = st.columns(3)
         cond_b = c3.selectbox('Boleta sin forma de pago', ['CON', 'CRE'], index=0 if cfg.cond_boleta == 'CON' else 1)
         cond_f = c3.selectbox('Factura sin forma de pago', ['CRE', 'CON'], index=0 if cfg.cond_factura == 'CRE' else 1)
@@ -209,6 +212,7 @@ with t_emp:
                 cfg.actividad_origen = 'usuario'
             cfg.nombre, cfg.rubro, cfg.actividad, cfg.modo_contado = nombre.strip().upper(), rubro.strip(), actividad, modo
             cfg.tc_tipo, cfg.usd_en_soles, cfg.nc_negativo, cfg.anticipo_pasivo = tc_tipo, usd, nc_neg, ant
+            cfg.glosa_detalle = glo
             cfg.cond_boleta, cfg.cond_factura, cfg.medio_pago_defecto = cond_b, cond_f, mp
             cfg.codigo_anulado, cfg.nombre_anulado = cod_an.strip() or '00000000000', nom_an.strip() or 'ANULADO'
             cfg.codigo_boleta, cfg.nombre_boleta = cod_bo.strip() or '03', nom_bo.strip() or 'BOLETA'
@@ -217,6 +221,46 @@ with t_emp:
             ss.lote = None
             st.success('Configuración guardada.')
             st.rerun()
+
+    st.markdown('#### Centro de costos (opcional)')
+    usar_cc = st.toggle('Usar centro de costos en las ventas de esta empresa', value=cfg.usar_centro_costos,
+                        help='Se llena la columna Z (centro de costos) según el tipo de venta. La columna AA queda vacía.')
+    if usar_cc != cfg.usar_centro_costos:
+        cfg.usar_centro_costos = usar_cc
+        S.guardar_config(cfg)
+        ss.lote = None
+        st.rerun()
+    if cfg.usar_centro_costos:
+        cc_f = st.file_uploader('Excel de centros de costos (NewContaSis)', type=['xlsx', 'xls'], key=f'cc_{ss.ruc}')
+        if cc_f and st.button('Cargar centros de costos'):
+            try:
+                items, avisos = S.cargar_centros(ss.ruc, cc_f.getvalue())
+                st.success(f'{len(items)} centros de costos cargados.')
+                for a in avisos:
+                    st.info(a)
+                cfg = S.config(ss.ruc)
+            except Exception as ex:
+                st.error(f'No se pudo leer: {ex}')
+        ccs = {c['codigo']: c['descripcion'] for c in S.db.centros(ss.ruc) if c.get('es_hoja', True)}
+        with st.form('cc_form'):
+            k1, k2, k3 = st.columns(3)
+            if ccs:
+                ops = [''] + sorted(set(ccs) | {x for x in (cfg.cc_servicios, cfg.cc_mercaderia, cfg.cc_productos) if x})
+                etq = lambda c: f"{c} – {ccs.get(c, '')}".strip(' –') if c else '(ninguno)'
+                cc_s = k1.selectbox('Ventas de servicios', ops, index=ops.index(cfg.cc_servicios), format_func=etq)
+                cc_m = k2.selectbox('Ventas de mercaderías', ops, index=ops.index(cfg.cc_mercaderia), format_func=etq)
+                cc_p = k3.selectbox('Productos terminados (opcional)', ops, index=ops.index(cfg.cc_productos), format_func=etq,
+                                    help='Si queda vacío se usa el de mercaderías.')
+            else:
+                st.caption('Suba el Excel para elegir de una lista, o escriba los códigos.')
+                cc_s = k1.text_input('Ventas de servicios', cfg.cc_servicios, max_chars=9)
+                cc_m = k2.text_input('Ventas de mercaderías', cfg.cc_mercaderia, max_chars=9)
+                cc_p = k3.text_input('Productos terminados (opcional)', cfg.cc_productos, max_chars=9)
+            if st.form_submit_button('Guardar centros de costos'):
+                cfg.cc_servicios, cfg.cc_mercaderia, cfg.cc_productos = cc_s.strip(), cc_m.strip(), cc_p.strip()
+                S.guardar_config(cfg)
+                ss.lote = None
+                st.success('Centros de costos guardados.')
 
     st.markdown('#### Entidades de NewContaSis (opcional)')
     st.caption('Excel "CLIENTES - PROVEEDORES (TODOS)". Sirve para tomar los códigos de ANULADO y BOLETA, y para reconocer '
@@ -391,7 +435,7 @@ with t_ventas:
             'Total': float(f.c.importe_total) if f.c is not None else 0.0, 'TC': f.tc,
             'Cond': f.condicion, 'AB cuenta': f.cuenta_base,
             'AB descripción': (plan.get(f.cuenta_base).descripcion[:40] if plan.get(f.cuenta_base) else ''),
-            'AD cuenta': f.cuenta_total, 'Anticipo': f.es_anticipo, 'Glosa': f.glosa,
+            'AD cuenta': f.cuenta_total, 'Anticipo': f.es_anticipo, 'CC': f.centro_costos, 'Glosa': f.glosa,
             'Por qué': f.explicacion or f.motivo, 'Avisos': ' · '.join(f.avisos)} for f in filas])
         cfgcols = {
             'clave': None,
@@ -403,8 +447,10 @@ with t_ventas:
             'AD cuenta': st.column_config.SelectboxColumn(options=op_total, help='Cuenta del total: 1011/1012 contado, 1212 crédito'),
             'Anticipo': st.column_config.CheckboxColumn(help='Marque si es un comprobante de anticipo (va a 1221)'),
             'Glosa': st.column_config.TextColumn(max_chars=60),
+            'CC': (st.column_config.TextColumn('CC', max_chars=9, help='Centro de costos (columna Z)')
+                   if ctx.cfg.usar_centro_costos else None),
         }
-        bloqueadas = [c for c in df.columns if c not in ('✓', 'Cond', 'AB cuenta', 'AD cuenta', 'Anticipo', 'Glosa')]
+        bloqueadas = [c for c in df.columns if c not in ('✓', 'Cond', 'AB cuenta', 'AD cuenta', 'Anticipo', 'CC', 'Glosa')]
         ed = st.data_editor(df, hide_index=True, use_container_width=True, column_config=cfgcols,
                             disabled=bloqueadas if editable else True, key=f'ed_{key}_{ss.ver}', height=min(38 * len(df) + 40, 560))
         cambio, sel = aplicar_ediciones(ed.to_dict('records'), {f.clave: f for f in lote.filas}, ctx)

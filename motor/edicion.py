@@ -44,6 +44,8 @@ def aplicar_ediciones(registros: list[dict], por_clave: dict[str, Fila], ctx) ->
             cambios['cuenta_total'] = texto(r['AD cuenta'])
         if 'Anticipo' in r and marca(r['Anticipo']) != f.es_anticipo:
             cambios['es_anticipo'] = marca(r['Anticipo'])
+        if 'CC' in r and texto(r['CC']) != f.centro_costos:
+            cambios['centro_costos'] = texto(r['CC'])
         if 'Glosa' in r and texto(r['Glosa']) != f.glosa:
             cambios['glosa'] = texto(r['Glosa'])
         if cambios:

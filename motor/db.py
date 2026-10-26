@@ -52,6 +52,11 @@ clientes_exterior = Table('v_clientes_exterior', meta,
                           Column('pais', String(4), default=''),
                           Column('origen', String(20), default=''),
                           Column('creado_en', String(30)))
+centros_costos = Table('v_centros_costos', meta,
+                       Column('empresa_ruc', String(11), primary_key=True),
+                       Column('codigo', String(9), primary_key=True),
+                       Column('descripcion', String(200), default=''),
+                       Column('es_hoja', Boolean, default=True))
 tipo_cambio = Table('tipo_cambio', meta,
                     Column('fecha', String(10), primary_key=True),
                     Column('compra', Float), Column('venta', Float),
@@ -197,6 +202,24 @@ class BaseDatos:
                     cx.execute(insert(clientes_exterior).values(empresa_ruc=ruc, codigo=n['codigo'], nombre=n['nombre'][:200],
                                                                 id_extranjero=n.get('id_extranjero', '')[:40], pais=n.get('pais', '')[:4],
                                                                 origen='asignado', creado_en=_ahora()))
+
+    # ------------------------------------------------------------ centros de costos (opcional)
+    def guardar_centros(self, ruc: str, items: list[dict]):
+        with self.engine.begin() as cx:
+            cx.execute(delete(centros_costos).where(centros_costos.c.empresa_ruc == ruc))
+            vistos, filas = set(), []
+            for i in items:
+                if i['codigo'] not in vistos:
+                    vistos.add(i['codigo'])
+                    filas.append({'empresa_ruc': ruc, 'codigo': i['codigo'][:9], 'descripcion': (i.get('descripcion') or '')[:200],
+                                  'es_hoja': bool(i.get('es_hoja', True))})
+            if filas:
+                cx.execute(insert(centros_costos), filas)
+
+    def centros(self, ruc: str) -> list[dict]:
+        with self.engine.connect() as cx:
+            return [dict(r._mapping) for r in cx.execute(select(centros_costos).where(centros_costos.c.empresa_ruc == ruc)
+                                                         .order_by(centros_costos.c.codigo))]
 
     # ------------------------------------------------------------ tipo de cambio (global)
     def tipos_cambio(self) -> list[dict]:

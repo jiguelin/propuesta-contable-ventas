@@ -88,7 +88,7 @@ def fila_excel(f: Fila, cfg: ConfigEmpresa) -> list:
         f.ref_tipo if f.tipo in ('07', '08') else '', f.ref_serie if f.tipo in ('07', '08') else '',
         f.ref_numero if f.tipo in ('07', '08') else '',                                              # S-U
         f.moneda, m['W'], _fecha(f.fecha_venc or f.fecha), f.condicion,                              # V-Y
-        '', '', f.cuenta_base, f.cuenta_otros if otros else '', f.cuenta_total,                      # Z-AD
+        f.centro_costos, '', f.cuenta_base, f.cuenta_otros if otros else '', f.cuenta_total,         # Z-AD (CC2 vacío)
         '', None, None, '', '', None, '',                                                            # AE-AK (régimen especial: no se registra en ventas)
         float(tasa) if tasa else None, (f.glosa or '')[:60],                                         # AL-AM
         f.medio_pago if f.condicion == 'CON' else '', '', None,                                      # AN-AP
@@ -150,15 +150,15 @@ def generar_revision(lote, cfg: ConfigEmpresa, plan=None) -> bytes:
     desc = (lambda cod: (plan.get(cod).descripcion if plan and plan.get(cod) else '')) if plan else (lambda cod: '')
     cab = ['Semáforo', 'Estado', 'Fecha', 'Tipo', 'Serie-Número', 'Tipo doc', 'Doc cliente', 'Cliente', 'Moneda',
            'Base', 'IGV', 'Total', 'TC', 'Condición', 'Cuenta base (AB)', 'Descripción AB', 'Cuenta total (AD)',
-           'Concepto', 'Confianza', 'Origen', 'Por qué', 'Glosa', 'Motivo', 'Avisos']
+           'Concepto', 'Centro de costos', 'Confianza', 'Origen', 'Por qué', 'Glosa', 'Motivo', 'Avisos']
 
     def fila_rev(f: Fila):
         c = f.c
         return [f.semaforo, f.estado, f.fecha, f.tipo, f.id, f.cli_tipo, f.cli_doc, f.cli_nombre or (c.nombre_cliente if c else ''),
                 f.moneda, c.gravadas if c else None, c.igv if c else None, c.importe_total if c else None, f.tc,
-                f.condicion, f.cuenta_base, desc(f.cuenta_base), f.cuenta_total, f.concepto, f.confianza, f.origen,
+                f.condicion, f.cuenta_base, desc(f.cuenta_base), f.cuenta_total, f.concepto, f.centro_costos, f.confianza, f.origen,
                 f.explicacion, f.glosa, f.motivo, '; '.join(f.avisos)]
-    anchos = {5: 14, 8: 34, 16: 34, 21: 40, 22: 34, 23: 40, 24: 60}
+    anchos = {5: 14, 8: 34, 16: 34, 22: 40, 23: 34, 24: 40, 25: 60}
     _hoja(wb, 'PROPUESTA', cab, [fila_rev(f) for f in lote.filas if f.estado in ('ok', 'anulado')], anchos)
     _hoja(wb, 'REVISAR', cab, [fila_rev(f) for f in lote.filas if f.estado == 'revisar'], anchos)
     _hoja(wb, 'ANULADOS Y FALTANTES', cab,

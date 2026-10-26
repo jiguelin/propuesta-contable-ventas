@@ -85,3 +85,21 @@ def test_migracion_config_antigua():
     assert not vieja.usd_en_soles and not vieja.nc_negativo
     nueva = ConfigEmpresa.desde_dict({'ruc': '20000000101', 'usd_en_soles': True, 'version_config': 2})
     assert nueva.usd_en_soles                                       # elección explícita posterior se respeta
+
+
+def test_cargar_centros_de_costos(servicio, tmp_path):
+    from openpyxl import Workbook
+    preparar(servicio, ESTUDIO, 'servicios')
+    wb = Workbook(); ws = wb.active
+    ws['B2'] = 'EMPRESA DE PRUEBA S.A.C.'; ws['B4'] = 'R.U.C.: 20000000100'; ws['B6'] = 'CENTROS DE COSTOS'
+    for j, v in enumerate(['COD', 'DESCRIPCION', 'DEBE', 'HABER'], start=2):
+        ws.cell(8, j, v)
+    for i, (c, d) in enumerate([('01', 'CC 01 SERVICIOS'), ('0102', 'COSTO FIJOS SERVICIOS'), ('0104', 'VENTA SERVICIOS'),
+                                ('0105', 'VENTA PRODUCTOS')], start=9):
+        ws.cell(i, 2, c.ljust(9)); ws.cell(i, 3, d.ljust(100))
+    ruta = tmp_path / 'cc.xlsx'; wb.save(ruta)
+    items, avisos = servicio.cargar_centros(ESTUDIO, ruta.read_bytes())
+    cfg = servicio.config(ESTUDIO)
+    assert len(items) == 4 and cfg.usar_centro_costos and (cfg.cc_servicios, cfg.cc_mercaderia) == ('0104', '0105')
+    lote, _ = servicio.procesar(ESTUDIO, '2026-09', [('f.xml', comprobante('F001-1'))], usar_ia=False)
+    assert lote.filas[0].centro_costos == '0104'
