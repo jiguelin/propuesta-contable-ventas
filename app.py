@@ -85,6 +85,8 @@ def servicio() -> tuple[Servicio, str]:
     """Devuelve (servicio, aviso). Si DATABASE_URL falla, sigue con la base temporal y avisa."""
     url = secreto('DATABASE_URL')
     clave_ia = secreto('ANTHROPIC_API_KEY')
+    if clave_ia and (' ' in clave_ia or clave_ia.endswith('...') or 'poner' in clave_ia.lower()):
+        clave_ia = None     # texto de ejemplo, no una clave real
     if url and ('usuario:clave@host' in url or '@host:' in url or url.strip().endswith('...')):
         url = None          # es el texto de ejemplo: se trata como si no hubiera base configurada
     if not url:
@@ -143,7 +145,8 @@ with st.sidebar:
     st.markdown('### 💱 Tipo de cambio')
     st.caption('Meses cargados: ' + (', '.join(tcs.meses_cargados()[-6:]) or 'ninguno'))
     st.divider()
-    st.caption(f'v{__version__} · IA: {"activa" if S.api_key else "sin clave (solo reglas)"} · '
+    st.caption(f'v{__version__} · Acceso: {"🔒 con clave" if secreto("APP_PASSWORD") else "🔓 sin clave"} · '
+               f'IA: {"activa" if S.api_key else "sin clave (solo reglas)"} · '
                f'Base: {"SQLite local (temporal)" if S.db.es_sqlite else "Postgres"}')
 
 st.title('🧾 Propuesta Contable de Ventas')
