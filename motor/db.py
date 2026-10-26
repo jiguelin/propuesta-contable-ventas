@@ -93,13 +93,16 @@ def _ahora() -> str:
     return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
 
+def url_local() -> str:
+    """Base SQLite temporal dentro de la app (datos/ventas.db)."""
+    ruta = Path(__file__).resolve().parent.parent / 'datos' / 'ventas.db'
+    ruta.parent.mkdir(parents=True, exist_ok=True)
+    return f'sqlite:///{ruta}'
+
+
 class BaseDatos:
     def __init__(self, url: str | None = None):
-        url = url or os.environ.get('DATABASE_URL')
-        if not url:
-            ruta = Path(__file__).resolve().parent.parent / 'datos' / 'ventas.db'
-            ruta.parent.mkdir(parents=True, exist_ok=True)
-            url = f'sqlite:///{ruta}'
+        url = url or os.environ.get('DATABASE_URL') or url_local()
         if url.startswith('postgres://'):            # formato de Heroku/Supabase antiguo
             url = 'postgresql+psycopg2://' + url[len('postgres://'):]
         self.url = url

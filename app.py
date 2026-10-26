@@ -18,6 +18,7 @@ import streamlit as st
 from motor import __version__
 from motor.clasificador_ventas import ConfigEmpresa, actividad_desde_rubro
 from motor.conceptos import CONCEPTOS, palabras_clave
+from motor.db import url_local
 from motor.edicion import aplicar_ediciones
 from motor.proceso import aplicar_cambio
 from motor.servicio_ventas import Servicio
@@ -80,11 +81,21 @@ if not acceso():
 
 
 @st.cache_resource
-def servicio() -> Servicio:
-    return Servicio(db_url=secreto('DATABASE_URL'), api_key=secreto('ANTHROPIC_API_KEY'))
+def servicio() -> tuple[Servicio, str]:
+    """Devuelve (servicio, aviso). Si DATABASE_URL falla, sigue con la base temporal y avisa."""
+    url = secreto('DATABASE_URL')
+    clave_ia = secreto('ANTHROPIC_API_KEY')
+    if url and ('usuario:clave@host' in url or '@host:' in url):
+        return Servicio(db_url=url_local(), api_key=clave_ia), ('DATABASE_URL tiene el texto de ejemplo; se usa la base temporal. '
+                                                          'Quítela de Secrets o ponga la dirección real de su base Postgres.')
+    try:
+        return Servicio(db_url=url, api_key=clave_ia), ''
+    except Exception as ex:   # base caída, clave equivocada, etc.: la app no debe quedar inutilizable
+        return Servicio(db_url=url_local(), api_key=clave_ia), (f'No se pudo conectar a DATABASE_URL ({ex.__class__.__name__}); '
+                                                          'se usa la base temporal. Revise la dirección en Secrets.')
 
 
-S = servicio()
+S, aviso_db = servicio()
 ss = st.session_state
 ss.setdefault('ruc', None)
 ss.setdefault('lote', None)
@@ -137,7 +148,9 @@ with st.sidebar:
 st.title('🧾 Propuesta Contable de Ventas')
 st.caption('XML de ventas del mes → Excel listo para importar en NewContaSis (Registro de Ventas), con cuentas, '
            'tipo de cambio, anulados y anticipos.')
-if S.db.es_sqlite:
+if aviso_db:
+    st.error(aviso_db, icon='⚠️')
+elif S.db.es_sqlite:
     st.info('Sin DATABASE_URL: los datos se guardan en una base temporal. En Streamlit Cloud se borran al reiniciar la app.', icon='ℹ️')
 
 if not ss.ruc:

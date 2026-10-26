@@ -50,8 +50,11 @@ XML / ZIP ─▶ lector UBL (corrige codificación) ─▶ ¿es de la empresa y 
 2. En **Advanced settings → Secrets** pegar (ver `.streamlit/secrets.toml.example`):
    ```toml
    APP_PASSWORD = "una-clave"            # muy recomendado: la dirección es pública
-   DATABASE_URL = "postgresql+psycopg2://usuario:clave@host:5432/postgres"   # Supabase o Neon
-   ANTHROPIC_API_KEY = "sk-ant-..."      # opcional
+   ```
+   Opcionales, solo cuando existan de verdad:
+   ```toml
+   DATABASE_URL = "postgresql+psycopg2://..."   # la dirección real de Supabase o Neon
+   ANTHROPIC_API_KEY = "sk-ant-..."
    ```
 3. Cada cambio que se sube al repositorio se publica solo.
 
