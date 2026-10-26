@@ -85,9 +85,10 @@ def servicio() -> tuple[Servicio, str]:
     """Devuelve (servicio, aviso). Si DATABASE_URL falla, sigue con la base temporal y avisa."""
     url = secreto('DATABASE_URL')
     clave_ia = secreto('ANTHROPIC_API_KEY')
-    if url and ('usuario:clave@host' in url or '@host:' in url):
-        return Servicio(db_url=url_local(), api_key=clave_ia), ('DATABASE_URL tiene el texto de ejemplo; se usa la base temporal. '
-                                                          'Quítela de Secrets o ponga la dirección real de su base Postgres.')
+    if url and ('usuario:clave@host' in url or '@host:' in url or url.strip().endswith('...')):
+        url = None          # es el texto de ejemplo: se trata como si no hubiera base configurada
+    if not url:
+        return Servicio(db_url=url_local(), api_key=clave_ia), ''
     try:
         return Servicio(db_url=url, api_key=clave_ia), ''
     except Exception as ex:   # base caída, clave equivocada, etc.: la app no debe quedar inutilizable
