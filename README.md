@@ -35,11 +35,13 @@ XML / ZIP ─▶ lector UBL (corrige codificación) ─▶ ¿es de la empresa y 
 | Contado / crédito | De la forma de pago del XML. Cuenta total: contado soles **1011**, contado dólares **1012**, crédito **1212** (editable fila por fila y en bloque). |
 | Ventas al contado | Como AD ya es la caja, al importar marque **"Generar solo – Asientos de Venta"** en NewContaSis. |
 | Boleta sin DNI | F = `0`, G = código de boleta de la empresa (`03`). Nunca `-`. Aviso si pasa de S/ 700. |
-| Anulados | Huecos en la numeración → se proponen como anulados con el código de la empresa (`0000` u `00000000000`); se exportan solo los confirmados. Si el número es un anticipo referenciado en otro XML, es "XML faltante", no anulado. |
+| Anulados | Importes en cero con la entidad de anulados que elija la empresa (opcional; si no se elige, `00000000000`). Huecos en la numeración → se proponen como anulados; se exportan solo los confirmados. Si el número es un anticipo referenciado en otro XML, es "XML faltante", no anulado. |
 | Anticipos | El anticipo va a **1221**. La factura/boleta final se importa con su base neta y la app lista el asiento complementario **Debe 1221 / Haber 70** por cada anticipo aplicado. |
 | Exportación | Cliente del exterior ya creado → su código; nuevo → 10000000001, 10000000002… (nunca se repite). |
 | Detracción / percepción | Solo informativas en ventas: no se registran (AE–AJ, AO, AP vacíos). |
-| Tipo de cambio | En todas las filas (soles y dólares), el del día de emisión o el inmediato anterior. Dólares: I–P en soles y W = total en US$. |
+| Tipo de cambio | En todas las filas (soles y dólares), el del día de emisión o el inmediato anterior. |
+| Moneda | Cada comprobante en su moneda: soles en soles (V = S) y dólares en dólares (V = D, W = total en US$). |
+| Notas de crédito | Importes en positivo; el tipo 07 indica que es nota de crédito. R–U con el documento modificado. |
 | Cuentas | Siempre del plan de la empresa. Orden: regla de la empresa → memoria de correcciones → señales del XML → actividad/rubro → IA (opcional, solo entre cuentas reales). |
 
 ## Publicar en Streamlit Community Cloud
@@ -102,8 +104,5 @@ tests/                       ← pytest con XML anonimizados y sintéticos
 
 ## A confirmar en la primera importación real en NewContaSis
 
-- Importes en dólares convertidos a soles (I–P) con W = total en US$ (igual que en compras). Si NewContaSis
-  los espera en dólares, desmarque la opción en ① Empresa.
-- Notas de crédito con importes negativos (opción en ① Empresa).
-- Fila de anulado con importes en cero y la entidad de anulado.
-- ICBPER solo en AQ (no se suma en O).
+- Columna W ("equivalente en dólares") con el total en US$ de los comprobantes en dólares.
+- ICBPER (impuesto a las bolsas de plástico, S/ 0.50 por bolsa) solo en AQ, sin sumarlo en O.

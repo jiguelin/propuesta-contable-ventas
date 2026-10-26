@@ -129,9 +129,15 @@ def test_dolares_al_contado(correr):                            # caso 27
     f = fila(lote, 'E001-130')
     m = importes(f, ctx.cfg)
     assert f.tc == 3.368 and f.cuenta_total == '1012' and f.moneda == 'D'
-    assert (m['J'], m['N'], m['P'], m['W']) == (Decimal('5052.00'), Decimal('909.36'), Decimal('5961.36'), Decimal('1770.00'))
+    # en dólares, como vienen en el XML; V = D y Q = TC
+    assert (m['J'], m['N'], m['P'], m['W']) == (Decimal('1500.00'), Decimal('270.00'), Decimal('1770.00'), Decimal('1770.00'))
+    x = fila_excel(f, ctx.cfg)
+    assert (col(x, 'V'), col(x, 'Q')) == ('D', 3.368)
+    # opción por empresa: convertir a soles
+    ms = importes(f, ConfigEmpresa(ruc=MINERA, usd_en_soles=True))
+    assert (ms['J'], ms['N'], ms['P'], ms['W']) == (Decimal('5052.00'), Decimal('909.36'), Decimal('5961.36'), Decimal('1770.00'))
     g = fila(lote, 'E001-131')
-    mg = importes(g, ctx.cfg)
+    mg = importes(g, ConfigEmpresa(ruc=MINERA, usd_en_soles=True))
     assert mg['J'] + mg['N'] == mg['P']                         # cuadre tras convertir
 
 
@@ -182,7 +188,9 @@ def test_nota_de_credito(correr):                               # caso 10
     x = fila_excel(nc, ctx.cfg)
     assert (col(x, 'S'), col(x, 'T'), col(x, 'U')) == ('01', 'F001', '50')
     assert col(x, 'R').strftime('%d/%m/%Y') == '02/09/2026'
-    assert col(x, 'P') == Decimal('-118.00')
+    assert col(x, 'C') == '07' and col(x, 'P') == Decimal('118.00')   # positivo: el tipo 07 indica la NC
+    neg = importes(nc, ConfigEmpresa(ruc=ESTUDIO, nc_negativo=True))
+    assert neg['P'] == Decimal('-118.00')                            # solo si la empresa lo pide
 
 
 def test_nota_sin_fecha_de_referencia_va_a_revisar(correr):

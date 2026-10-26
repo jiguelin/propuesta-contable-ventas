@@ -161,18 +161,31 @@ with t_emp:
                         format_func={'directo': 'Directo a caja (AD = 1011 soles / 1012 dólares)',
                                      'provision': 'Provisión + cobro (AD = 1212; NewContaSis genera el cobro)'}.get)
         tc_tipo = c2.radio('Tipo de cambio', ['venta', 'compra'], index=0 if cfg.tc_tipo == 'venta' else 1, horizontal=True)
-        usd = c2.checkbox('Importes en dólares convertidos a soles (W = total en US$)', cfg.usd_en_soles)
-        nc_neg = c2.checkbox('Notas de crédito con importes negativos', cfg.nc_negativo)
+        usd = c2.checkbox('Convertir dólares a soles (normalmente no)', cfg.usd_en_soles,
+                          help='Por defecto los comprobantes en dólares van en dólares, con V = D y el TC en Q.')
+        nc_neg = c2.checkbox('Notas de crédito en negativo (normalmente no)', cfg.nc_negativo,
+                             help='Por defecto van en positivo: el tipo 07 indica que es nota de crédito.')
         ant = c2.checkbox('Anticipos a 1221 y asiento Debe 1221 / Haber 70 en la factura final', cfg.anticipo_pasivo)
         c3, c4, c5 = st.columns(3)
         cond_b = c3.selectbox('Boleta sin forma de pago', ['CON', 'CRE'], index=0 if cfg.cond_boleta == 'CON' else 1)
         cond_f = c3.selectbox('Factura sin forma de pago', ['CRE', 'CON'], index=0 if cfg.cond_factura == 'CRE' else 1)
         mp = c3.selectbox('Medio de pago por defecto (contado)', list(MEDIOS_PAGO), format_func=MEDIOS_PAGO.get,
                           index=list(MEDIOS_PAGO).index(cfg.medio_pago_defecto) if cfg.medio_pago_defecto in MEDIOS_PAGO else 0)
-        cod_an = c4.text_input('Código de entidad ANULADO', cfg.codigo_anulado, max_chars=11)
-        nom_an = c4.text_input('Nombre de entidad ANULADO', cfg.nombre_anulado)
-        cod_bo = c5.text_input('Código de BOLETA sin documento', cfg.codigo_boleta, max_chars=11)
-        nom_bo = c5.text_input('Nombre de BOLETA sin documento', cfg.nombre_boleta)
+        ents = {e['codigo']: e['nombre'] for e in S.db.entidades(ss.ruc)}
+        if ents:
+            ops_ent = sorted(set(ents) | {cfg.codigo_anulado, cfg.codigo_boleta})
+            etq = lambda c: f"{c} – {ents.get(c, '')}".strip(' –')
+            cod_an = c4.selectbox('Entidad para ANULADOS (opcional)', ops_ent, index=ops_ent.index(cfg.codigo_anulado), format_func=etq,
+                                  help='Elija la entidad que la empresa usa para anular. Si no elige, se usa 00000000000.')
+            nom_an = ents.get(cod_an, cfg.nombre_anulado)
+            cod_bo = c5.selectbox('Entidad para BOLETA sin documento', ops_ent, index=ops_ent.index(cfg.codigo_boleta), format_func=etq)
+            nom_bo = ents.get(cod_bo, cfg.nombre_boleta)
+        else:
+            cod_an = c4.text_input('Código de entidad para ANULADOS (opcional)', cfg.codigo_anulado, max_chars=11,
+                                   help='Si lo deja vacío se usa 00000000000. Cargue las entidades para elegirla de una lista.')
+            nom_an = c4.text_input('Nombre de entidad ANULADO', cfg.nombre_anulado)
+            cod_bo = c5.text_input('Código de BOLETA sin documento', cfg.codigo_boleta, max_chars=11)
+            nom_bo = c5.text_input('Nombre de BOLETA sin documento', cfg.nombre_boleta)
         vinc = st.text_area('RUC de empresas vinculadas (uno por línea, opcional)', '\n'.join(cfg.vinculados), height=70)
         if st.form_submit_button('Guardar configuración', type='primary'):
             if actividad != cfg.actividad:
@@ -458,7 +471,8 @@ with t_ventas:
                    'el asiento complementario Debe 1221 / Haber 70.')
         if lote.anticipos:
             st.dataframe(pd.DataFrame([{'Final': a['final'], 'Fecha': a['fecha'], 'Anticipo': a['anticipo'],
-                                        'Monto anticipo': float(a['monto_anticipo']), 'Base (S/)': float(a['base_soles']),
+                                        'Monto anticipo': float(a['monto_anticipo']), 'Base a registrar': float(a['base_soles']),
+                                        'Moneda': a['moneda'],
                                         'Debe': a['debe'] if a['proponer'] else '', 'Haber': a['haber'] if a['proponer'] else '',
                                         'Anticipo registrado en': a['origen'], 'Acción': a['accion']} for a in lote.anticipos]),
                          hide_index=True, use_container_width=True)

@@ -58,8 +58,8 @@ class ConfigEmpresa:
     actividad_origen: str = ''              # 'usuario' si la eligió la persona (el giro del plan no la cambia)
     modo_contado: str = 'directo'           # directo (AD = caja) | provision (AD = 1212)
     tc_tipo: str = 'venta'                  # venta | compra
-    usd_en_soles: bool = True
-    nc_negativo: bool = True
+    usd_en_soles: bool = False              # False: importes en dólares (V = D, Q = TC). True: convertidos a soles
+    nc_negativo: bool = False               # las NC van en positivo; el tipo 07 indica que es nota de crédito
     anticipo_pasivo: bool = True            # anticipo → 1221; final → asiento Debe 1221 / Haber 70
     medio_pago_defecto: str = ''
     cond_boleta: str = 'CON'
@@ -71,11 +71,16 @@ class ConfigEmpresa:
     genericos: list[str] = field(default_factory=lambda: list(GENERICOS_DEFECTO))
     vinculados: list[str] = field(default_factory=list)
     alerta_boleta_sin_dni: float = 700.0
+    version_config: int = 2
 
     @classmethod
     def desde_dict(cls, d: dict) -> 'ConfigEmpresa':
+        d = dict(d or {})
+        if d.get('version_config', 1) < 2:
+            # v0.1.0 guardaba dólares convertidos a soles y NC en negativo; la regla confirmada es la contraria
+            d['usd_en_soles'], d['nc_negativo'], d['version_config'] = False, False, 2
         campos = {f for f in cls.__dataclass_fields__}
-        return cls(**{k: v for k, v in (d or {}).items() if k in campos})
+        return cls(**{k: v for k, v in d.items() if k in campos})
 
     def a_dict(self) -> dict:
         return {f: getattr(self, f) for f in self.__dataclass_fields__}

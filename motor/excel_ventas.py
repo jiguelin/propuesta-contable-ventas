@@ -51,7 +51,8 @@ def _q(v) -> Decimal:
 
 
 def importes(f: Fila, cfg: ConfigEmpresa) -> dict:
-    """I..P, AQ y W en la moneda de registro (soles si usd_en_soles), con signo de NC y cuadre de centavos."""
+    """I..P, AQ y W. Por defecto en la moneda del comprobante (dólares en dólares, V = D y Q = TC);
+    con usd_en_soles se convierten a soles. Las NC van en positivo salvo que la empresa pida negativo."""
     cero = {k: Decimal('0.00') for k in ('I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'AQ')}
     if f.c is None or f.estado in ('anulado', 'hueco_anulado'):
         return {**cero, 'W': None}
@@ -165,7 +166,7 @@ def generar_revision(lote, cfg: ConfigEmpresa, plan=None) -> bytes:
     _hoja(wb, 'EXCLUIDOS', ['Archivo / comprobante', 'Fecha', 'Motivo'],
           [[(f.c.archivo if f.c else f.id), f.fecha, f.motivo] for f in lote.filas if f.estado == 'excluido'] +
           [[n, '', m] for n, m in lote.no_procesados], {1: 40, 3: 70})
-    _hoja(wb, 'ANTICIPOS', ['Comprobante final', 'Fecha', 'Anticipo', 'Monto anticipo', 'Base', 'Base en soles',
+    _hoja(wb, 'ANTICIPOS', ['Comprobante final', 'Fecha', 'Anticipo', 'Monto anticipo', 'Base', 'Base a registrar',
                             'Debe', 'Haber', 'Dónde se registró el anticipo', 'Acción'],
           [[a['final'], a['fecha'], a['anticipo'], a['monto_anticipo'], a['base'], a['base_soles'], a['debe'] if a['proponer'] else '',
             a['haber'] if a['proponer'] else '', a['origen'], a['accion']] for a in lote.anticipos], {9: 24, 10: 70})
@@ -183,14 +184,17 @@ def generar_revision(lote, cfg: ConfigEmpresa, plan=None) -> bytes:
 
 def generar_reporte(lote, cfg: ConfigEmpresa) -> str:
     exp = lote.exportables
-    tot = {k: Decimal(0) for k in ('J', 'N', 'P')}
+    tot = {mon: {k: Decimal(0) for k in ('J', 'N', 'P')} for mon in ('S', 'D')}
     for f in exp:
         m = importes(f, cfg)
-        for k in tot:
-            tot[k] += m[k]
+        mon = 'D' if (f.moneda == 'D' and not cfg.usd_en_soles) else 'S'
+        for k in tot[mon]:
+            tot[mon][k] += m[k]
     lin = [f'REPORTE DE VENTAS — {cfg.nombre} (RUC {cfg.ruc}) — periodo {lote.periodo}',
            f'Generado: {datetime.now():%d/%m/%Y %H:%M}', '',
-           f'Filas para importar: {len(exp)}   Base: {tot["J"]:,.2f}   IGV: {tot["N"]:,.2f}   Total: {tot["P"]:,.2f} (soles)',
+           f'Filas para importar: {len(exp)}',
+           f'  Soles:   base {tot["S"]["J"]:,.2f}   IGV {tot["S"]["N"]:,.2f}   total {tot["S"]["P"]:,.2f}',
+           f'  Dólares: base {tot["D"]["J"]:,.2f}   IGV {tot["D"]["N"]:,.2f}   total {tot["D"]["P"]:,.2f}',
            f'Contado: {sum(1 for f in exp if f.c is not None and f.condicion == "CON")}   '
            f'Crédito: {sum(1 for f in exp if f.c is not None and f.condicion == "CRE")}',
            f'Por revisar: {len(lote.por_estado("revisar"))}   Excluidos: {len(lote.por_estado("excluido"))}   '

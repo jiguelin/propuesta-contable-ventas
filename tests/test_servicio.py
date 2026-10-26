@@ -77,3 +77,11 @@ def test_hueco_al_inicio_del_mes_y_nc_de_mes_anterior(servicio):
     assert huecos == [21, 22]                                   # sabe que agosto terminó en F001-20
     nc = next(f for f in lote2.filas if f.id == 'FC01-1')
     assert nc.ref_fecha == '2026-08-28' and nc.cuenta_base == '7032103' and nc.estado == 'ok'
+
+
+def test_migracion_config_antigua():
+    from motor.clasificador_ventas import ConfigEmpresa
+    vieja = ConfigEmpresa.desde_dict({'ruc': '20000000101', 'usd_en_soles': True, 'nc_negativo': True})
+    assert not vieja.usd_en_soles and not vieja.nc_negativo
+    nueva = ConfigEmpresa.desde_dict({'ruc': '20000000101', 'usd_en_soles': True, 'version_config': 2})
+    assert nueva.usd_en_soles                                       # elección explícita posterior se respeta
