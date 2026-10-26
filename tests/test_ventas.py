@@ -339,3 +339,25 @@ def test_centro_de_costos_opcional(correr):
     assert m.centro_costos == '0104'
     aplicar_cambio(m, ctx, centro_costos='0999')                     # o se edita a mano
     assert m.centro_costos == '0999'
+
+
+# ----------------------------------------------------------------------------- buscador y filtros
+def test_buscador_y_filtros(correr, tc):
+    from motor.filtros import filtrar
+    lote, _ = correr(ESTUDIO, 'servicios', archivos('servicios_oct'), '2026-10',
+                     tc_extra=[TC(date(2026, 10, 22), 3.390, 3.400, 'prueba')])
+    filas = lote.por_estado('ok')
+    assert len(filas) == 28
+    con = filtrar(filas, condicion='CON')
+    assert [f.id for f in con] == ['E001-1111']
+    assert len(filtrar(filas, condicion='CRE')) == 27
+    f1099 = fila(lote, 'E001-1099')
+    for texto in ('E001-1099', 'e001 1099', 'E0011099', '1099', '0001099'):
+        assert [f.id for f in filtrar(filas, texto)] == ['E001-1099'], texto
+    assert filtrar(filas, f1099.cli_doc) == [f1099]                    # por RUC completo
+    assert f1099 in filtrar(filas, f1099.cli_doc[:6])                  # por parte del RUC
+    nombre = f1099.cli_nombre.lower()
+    assert f1099 in filtrar(filas, nombre)                             # razón social sin importar mayúsculas
+    assert filtrar(filas, 'NO EXISTE NADIE') == []
+    assert len(filtrar(filas, 'E001')) == 28                           # toda la serie
+    assert filtrar(filas, moneda='D') == [] and len(filtrar(filas, tipos=['01'])) == 28

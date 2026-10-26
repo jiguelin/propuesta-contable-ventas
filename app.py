@@ -20,6 +20,7 @@ from motor.clasificador_ventas import ConfigEmpresa, actividad_desde_rubro
 from motor.conceptos import CONCEPTOS, palabras_clave
 from motor.db import url_local
 from motor.edicion import aplicar_ediciones
+from motor.filtros import filtrar
 from motor.proceso import aplicar_cambio
 from motor.servicio_ventas import Servicio
 
@@ -460,21 +461,46 @@ with t_ventas:
             st.rerun()
         return sel
 
-    tabs = st.tabs([f'Propuesta ({len(lote.por_estado("ok"))})', f'Revisar ({len(lote.por_estado("revisar"))})',
+    # ----- buscador y filtros
+    st.markdown('##### 🔎 Buscar y filtrar')
+    q1, q2, q3, q4 = st.columns([2.4, 1.2, 1.2, 1.6])
+    busca = q1.text_input('Buscar', placeholder='RUC/DNI, razón social, serie o número (E001-1099, 1099…)',
+                          label_visibility='collapsed', key='f_busca')
+    f_cond = q2.selectbox('Condición', ['Todas', 'Contado', 'Crédito'], label_visibility='collapsed', key='f_cond')
+    f_mon = q3.selectbox('Moneda', ['Soles y dólares', 'Soles', 'Dólares'], label_visibility='collapsed', key='f_mon')
+    TIPOS_F = {'01': 'Facturas', '03': 'Boletas', '07': 'Notas de crédito', '08': 'Notas de débito'}
+    f_tipos = q4.multiselect('Tipo', list(TIPOS_F), format_func=TIPOS_F.get, placeholder='Todos los tipos',
+                             label_visibility='collapsed', key='f_tipos')
+    criterio = dict(texto=busca, condicion={'Contado': 'CON', 'Crédito': 'CRE'}.get(f_cond, ''),
+                    moneda={'Soles': 'S', 'Dólares': 'D'}.get(f_mon, ''), tipos=f_tipos or None)
+    hay_filtro = bool(busca or criterio['condicion'] or criterio['moneda'] or f_tipos)
+    firma_f = f"{busca}|{f_cond}|{f_mon}|{','.join(f_tipos)}"
+    vis_ok = filtrar(lote.por_estado('ok'), **criterio)
+    vis_rev = filtrar(lote.por_estado('revisar'), **criterio)
+    vis_an = filtrar(lote.por_estado('anulado', 'hueco_anulado', 'faltante'), texto=busca, tipos=f_tipos or None)
+    if hay_filtro:
+        total_f = sum(float(f.c.importe_total) for f in vis_ok + vis_rev if f.c is not None and f.moneda == 'S')
+        total_d = sum(float(f.c.importe_total) for f in vis_ok + vis_rev if f.c is not None and f.moneda == 'D')
+        st.caption(f'Filtrado: {len(vis_ok) + len(vis_rev)} comprobantes · S/ {total_f:,.2f}' +
+                   (f' · US$ {total_d:,.2f}' if total_d else ''))
+
+    tabs = st.tabs([f'Propuesta ({len(vis_ok)}{"/" + str(len(lote.por_estado("ok"))) if hay_filtro else ""})',
+                    f'Revisar ({len(vis_rev)}{"/" + str(len(lote.por_estado("revisar"))) if hay_filtro else ""})',
                     f'Anulados y faltantes ({len(lote.por_estado("anulado", "hueco_anulado", "faltante"))})',
                     f'Anticipos ({len(lote.anticipos)})', f'Excluidos ({len(lote.por_estado("excluido")) + len(lote.no_procesados)})',
                     f'Clientes del exterior nuevos ({len(lote.entidades_nuevas)})'])
     with tabs[0]:
-        sel = tabla(lote.por_estado('ok'), key='ok') or []
+        sel = tabla(vis_ok, key=f'ok_{firma_f}') or []
     with tabs[1]:
         st.caption('Estas filas no se exportan hasta corregirlas (cuenta, TC, RUC, cuadre…).')
-        sel_r = tabla(lote.por_estado('revisar'), key='rev') or []
+        sel_r = tabla(vis_rev, key=f'rev_{firma_f}') or []
         sel += sel_r
 
     # ----- cambios en bloque
     with st.expander('✏️ Cambios en bloque (cuenta de ventas AB o cuenta del total AD)', expanded=False):
         b1, b2, b3, b4 = st.columns([1.2, 1.2, 2, 1])
-        destino = b1.selectbox('Aplicar a', ['Seleccionadas (✓)', 'Todas', 'Solo contado', 'Solo crédito'])
+        destino = b1.selectbox('Aplicar a', ['Seleccionadas (✓)', 'Filtradas (buscador y filtros)', 'Todas',
+                                             'Solo contado', 'Solo crédito'])
         campo = b2.selectbox('Columna', ['AD cuenta total', 'AB cuenta de ventas'])
         opciones_b = op_total if campo.startswith('AD') else op_base
         etiqueta = lambda c: f"{c} – {plan.get(c).descripcion[:50] if plan.get(c) else ''}"
@@ -482,7 +508,8 @@ with t_ventas:
                                 index=opciones_b.index('1212') if campo.startswith('AD') and '1212' in opciones_b else 0)
         if b4.button('Aplicar', use_container_width=True):
             filas = [f for f in lote.filas if f.estado in ('ok', 'revisar') and f.c is not None]
-            filas = {'Seleccionadas (✓)': sel, 'Todas': filas, 'Solo contado': [f for f in filas if f.condicion == 'CON'],
+            filas = {'Seleccionadas (✓)': sel, 'Filtradas (buscador y filtros)': vis_ok + vis_rev, 'Todas': filas,
+                     'Solo contado': [f for f in filas if f.condicion == 'CON'],
                      'Solo crédito': [f for f in filas if f.condicion == 'CRE']}[destino]
             for f in filas:
                 aplicar_cambio(f, ctx, **({'cuenta_total': cuenta_b} if campo.startswith('AD') else {'cuenta_base': cuenta_b}))
@@ -502,12 +529,12 @@ with t_ventas:
         st.caption('Huecos en la numeración: se proponen como anulados con la entidad '
                    f'{ctx.cfg.codigo_anulado} ({ctx.cfg.nombre_anulado}). Solo se exportan los confirmados. '
                    'Si en realidad falta el XML, cambie el estado a "XML faltante".')
-        filas_an = lote.por_estado('anulado', 'hueco_anulado', 'faltante')
+        filas_an = vis_an
         if filas_an:
             dfa = pd.DataFrame([{'clave': f.clave, 'Confirmar': f.confirmado if f.estado == 'hueco_anulado' else f.estado == 'anulado',
                                  'Estado': f.estado, 'Fecha': f.fecha, 'Tipo': f.tipo, 'Serie-Número': f.id,
                                  'Entidad': f'{f.cli_doc} {f.cli_nombre}'.strip(), 'Motivo': f.motivo} for f in filas_an])
-            eda = st.data_editor(dfa, hide_index=True, use_container_width=True, key=f'an_{ss.ver}',
+            eda = st.data_editor(dfa, hide_index=True, use_container_width=True, key=f'an_{ss.ver}_{firma_f}',
                                  column_config={'clave': None,
                                                 'Estado': st.column_config.SelectboxColumn(options=['hueco_anulado', 'faltante', 'anulado'])},
                                  disabled=['Fecha', 'Tipo', 'Serie-Número', 'Entidad', 'Motivo'])
