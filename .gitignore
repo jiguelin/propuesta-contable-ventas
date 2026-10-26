@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+/datos/
+.streamlit/secrets.toml
+.pytest_cache/
+# Nunca subir XML, planes o entidades reales de clientes: este repositorio es público.
+privado/
+*.real.xml
