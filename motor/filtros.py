@@ -44,8 +44,10 @@ def coincide_busqueda(f: Fila, texto: str) -> bool:
     return _compacto(t) in _compacto(f.id) or t in _norm(doc)
 
 
-def filtrar(filas: list[Fila], texto: str = '', condicion: str = '', moneda: str = '', tipos: list[str] | None = None) -> list[Fila]:
-    """condicion: '' | 'CON' | 'CRE' · moneda: '' | 'S' | 'D' · tipos: ['01', '03', '07', '08'] o None (todos)."""
+def filtrar(filas: list[Fila], texto: str = '', condicion: str = '', moneda: str = '', tipos: list[str] | None = None,
+            fuente: str = '') -> list[Fila]:
+    """condicion: '' | 'CON' | 'CRE' · moneda: '' | 'S' | 'D' · tipos: ['01', '03', '07', '08'] o None (todos) ·
+    fuente: '' | 'xml' | 'excel' (de dónde salió el comprobante)."""
     res = []
     for f in filas:
         if condicion and (f.c is None or f.condicion != condicion):
@@ -53,6 +55,8 @@ def filtrar(filas: list[Fila], texto: str = '', condicion: str = '', moneda: str
         if moneda and f.moneda != moneda:
             continue
         if tipos and f.tipo not in tipos:
+            continue
+        if fuente and (f.c is None or f.c.origen != fuente):
             continue
         if not coincide_busqueda(f, texto):
             continue

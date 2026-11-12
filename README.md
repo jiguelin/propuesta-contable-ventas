@@ -24,13 +24,14 @@ XML / ZIP ─▶ lector UBL (corrige codificación) ─▶ ¿es de la empresa y 
    código de ANULADO (ej. `0000`) y el de BOLETA sin documento (`03`), y se reconocen los clientes del exterior.
 4. **③ Tipo de cambio** (una vez al mes, sirve para todas las empresas): subir el PDF de SUNAT.
 5. **④ Ventas del mes**: elegir el mes, subir los XML (sueltos o ZIP, también comunicaciones de baja y
-   resúmenes diarios) → **GENERAR PROPUESTA** → revisar, corregir y **descargar**.
+   resúmenes diarios) y/o el **Excel de ventas del mes** → **GENERAR PROPUESTA** → revisar, corregir y **descargar**.
 
 ## Reglas principales
 
 | Tema | Regla |
 |---|---|
 | Periodo | Solo entra lo emitido en el mes elegido; lo demás va a Excluidos. |
+| XML y Excel | Si el descargador no trae todos los XML (p. ej. las boletas), se sube también el Excel de ventas del mes (44 columnas A–AR, datos desde cualquier fila). El XML manda cuando existe (detalle para la glosa, forma de pago); del Excel solo entran los que no tienen XML. Nunca se duplican; si el total difiere, aviso. Filas del Excel con importes en cero → anulados. DNI `00000001` → boleta sin documento; DNI sin nombre → nombre de las entidades o "CLIENTE <DNI>". Facturas del Excel sin condición → la de las facturas con XML del mismo cliente. Filtro "Fuente" en la revisión. |
 | Empresa | Si el RUC emisor no es la empresa, se excluye (es una compra u otra empresa). |
 | Contado / crédito | De la forma de pago del XML. Cuenta total: contado soles **1011**, contado dólares **1012**, crédito **1212** (editable fila por fila y en bloque). |
 | Ventas al contado | Como AD ya es la caja, al importar marque **"Generar solo – Asientos de Venta"** en NewContaSis. |
@@ -90,7 +91,8 @@ app.py                       ← interfaz Streamlit (solo dibuja)
 cli.py                       ← mismo motor por línea de comandos
 motor/
   xml_parser.py              ← lector UBL 2.1 (copia de compras + codificación, anticipos, exportación)
-  lector.py                  ← XML/ZIP, comunicaciones de baja (RA) y resúmenes diarios (RC)
+  lector.py                  ← XML/ZIP, comunicaciones de baja (RA) y resúmenes diarios (RC); une XML + Excel
+  excel_entrada.py           ← Excel de ventas del mes (cuando faltan XML)
   texto.py                   ← limpieza de nombres y glosas (copia de compras)
   tipo_cambio.py             ← PDF SUNAT (copia de compras + compra/venta)
   plan_cuentas.py            ← plan de NewContaSis, cuentas hoja por prefijo, giro

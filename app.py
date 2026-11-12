@@ -398,8 +398,11 @@ with t_ventas:
                         help='Solo se consulta cuando las reglas no llegan al 90 %. Requiere ANTHROPIC_API_KEY en Secrets.')
     periodo = f'{anio}-{mes:02d}'
     st.caption('Solo entran los comprobantes emitidos en el mes elegido; los de otros meses salen en Excluidos.')
-    xmls = st.file_uploader('XML de ventas (sueltos o ZIP). También comunicaciones de baja y resúmenes diarios.',
-                            type=['xml', 'zip'], accept_multiple_files=True, key=f'xml_{ss.ruc}')
+    xmls = st.file_uploader('XML de ventas (sueltos o ZIP) y/o Excel de ventas del mes. También comunicaciones de baja '
+                            'y resúmenes diarios.', type=['xml', 'zip', 'xlsx'], accept_multiple_files=True, key=f'xml_{ss.ruc}',
+                            help='Si el descargador no trajo todos los XML (por ejemplo, las boletas), suba también el Excel '
+                                 'de ventas del mes (44 columnas A–AR). El XML manda cuando existe; del Excel solo entran los '
+                                 'comprobantes sin XML. Nada se duplica.')
     if st.button('GENERAR PROPUESTA', type='primary', disabled=not xmls, use_container_width=True):
         with st.spinner('Leyendo y clasificando…'):
             lote, ctx = S.procesar(ss.ruc, periodo, [(f.name, f.getvalue()) for f in xmls], usar_ia)
@@ -412,6 +415,8 @@ with t_ventas:
 
     for b in lote.bloqueos:
         st.error(b, icon='⛔')
+    for r in lote.resumen:
+        st.info(r, icon='📄')
     exp = lote.exportables
     m1, m2, m3, m4, m5, m6 = st.columns(6)
     m1.metric('Para importar', len(exp))
@@ -432,7 +437,8 @@ with t_ventas:
             return
         df = pd.DataFrame([{
             'clave': f.clave, '✓': False, '': f.semaforo, 'Estado': ESTADOS[f.estado], 'Fecha': f.fecha, 'Tipo': f.tipo,
-            'Serie-Número': f.id, 'Cliente': f'{f.cli_doc} {f.cli_nombre}'.strip(), 'Mon': f.moneda,
+            'Serie-Número': f.id, 'Fuente': ('Excel' if f.c is not None and f.c.origen == 'excel' else ('XML' if f.c is not None else '')),
+            'Cliente': f'{f.cli_doc} {f.cli_nombre}'.strip(), 'Mon': f.moneda,
             'Total': float(f.c.importe_total) if f.c is not None else 0.0, 'TC': f.tc,
             'Cond': f.condicion, 'AB cuenta': f.cuenta_base,
             'AB descripción': (plan.get(f.cuenta_base).descripcion[:40] if plan.get(f.cuenta_base) else ''),
@@ -463,7 +469,7 @@ with t_ventas:
 
     # ----- buscador y filtros
     st.markdown('##### 🔎 Buscar y filtrar')
-    q1, q2, q3, q4 = st.columns([2.4, 1.2, 1.2, 1.6])
+    q1, q2, q3, q4, q5 = st.columns([2.2, 1.1, 1.1, 1.5, 1.1])
     busca = q1.text_input('Buscar', placeholder='RUC/DNI, razón social, serie o número (E001-1099, 1099…)',
                           label_visibility='collapsed', key='f_busca')
     f_cond = q2.selectbox('Condición', ['Todas', 'Contado', 'Crédito'], label_visibility='collapsed', key='f_cond')
@@ -471,10 +477,12 @@ with t_ventas:
     TIPOS_F = {'01': 'Facturas', '03': 'Boletas', '07': 'Notas de crédito', '08': 'Notas de débito'}
     f_tipos = q4.multiselect('Tipo', list(TIPOS_F), format_func=TIPOS_F.get, placeholder='Todos los tipos',
                              label_visibility='collapsed', key='f_tipos')
+    f_fuente = q5.selectbox('Fuente', ['XML y Excel', 'Solo XML', 'Solo Excel'], label_visibility='collapsed', key='f_fuente')
     criterio = dict(texto=busca, condicion={'Contado': 'CON', 'Crédito': 'CRE'}.get(f_cond, ''),
-                    moneda={'Soles': 'S', 'Dólares': 'D'}.get(f_mon, ''), tipos=f_tipos or None)
-    hay_filtro = bool(busca or criterio['condicion'] or criterio['moneda'] or f_tipos)
-    firma_f = f"{busca}|{f_cond}|{f_mon}|{','.join(f_tipos)}"
+                    moneda={'Soles': 'S', 'Dólares': 'D'}.get(f_mon, ''), tipos=f_tipos or None,
+                    fuente={'Solo XML': 'xml', 'Solo Excel': 'excel'}.get(f_fuente, ''))
+    hay_filtro = bool(busca or criterio['condicion'] or criterio['moneda'] or f_tipos or criterio['fuente'])
+    firma_f = f"{busca}|{f_cond}|{f_mon}|{','.join(f_tipos)}|{f_fuente}"
     vis_ok = filtrar(lote.por_estado('ok'), **criterio)
     vis_rev = filtrar(lote.por_estado('revisar'), **criterio)
     vis_an = filtrar(lote.por_estado('anulado', 'hueco_anulado', 'faltante'), texto=busca, tipos=f_tipos or None)

@@ -28,6 +28,7 @@ class Lote:
     anticipos: list[dict] = field(default_factory=list)   # asientos complementarios Debe 1221 / Haber 70
     entidades_nuevas: list[dict] = field(default_factory=list)
     bloqueos: list[str] = field(default_factory=list)
+    resumen: list[str] = field(default_factory=list)       # qué aportó el XML y qué el Excel
 
     def por_estado(self, *estados: str) -> list[Fila]:
         return [f for f in self.filas if f.estado in estados]
@@ -65,11 +66,13 @@ def cuadre(f: Fila) -> Decimal:
 
 def procesar(ctx: Contexto, periodo: str, lectura: Lectura, ultimo_previo: dict | None = None) -> Lote:
     cfg: ConfigEmpresa = ctx.cfg
-    lote = Lote(cfg.ruc, periodo, no_procesados=list(lectura.no_procesados))
+    lote = Lote(cfg.ruc, periodo, no_procesados=list(lectura.no_procesados), resumen=list(lectura.resumen))
 
     # ------------------------------------------------------------ 1. filtros
     validos, vistos = [], {}
     for c in lectura.comprobantes:
+        if c.origen == 'excel' and not c.ruc_emisor:
+            c.ruc_emisor = cfg.ruc                      # el Excel es de la empresa elegida (no trae el RUC emisor)
         serie, num = separar(c.serie_numero)
         f = Fila(clave(c.tipo_codigo, serie, num or 0), c.tipo_codigo, serie, num or 0, c.fecha_emision, c=c)
         if c.error:
@@ -106,6 +109,9 @@ def procesar(ctx: Contexto, periodo: str, lectura: Lectura, ultimo_previo: dict 
         if abs(dif) > Decimal('0.01') and f.estado == 'ok':
             f.estado, f.motivo = 'revisar', f'No cuadra: total − suma de importes = {dif}'
         lote.filas.append(f)
+
+    # ------------------------------------------------------------ 3b. condición de las filas que vienen solo del Excel
+    _condicion_desde_xml(lote, ctx)
 
     # ------------------------------------------------------------ 4. bajas (Comunicación de Baja / Resumen diario)
     for b in lectura.bajas:
@@ -187,6 +193,31 @@ def calcular_anticipos(lote: Lote, ctx: Contexto):
                 'base_soles': (base * k).quantize(D2, ROUND_HALF_UP), 'moneda': f.moneda,
                 'debe': cta_ant, 'haber': f.cuenta_base, 'origen': origen, 'proponer': proponer, 'accion': accion,
             })
+
+
+def _condicion_desde_xml(lote: Lote, ctx: Contexto):
+    """El Excel no siempre trae contado/crédito. Para las facturas que vienen solo del Excel se usa lo que dicen
+    los XML del mismo cliente en el mes; si no hay, lo que dicen todos los XML de facturas del mes (si coinciden)."""
+    xml = [f for f in lote.filas if f.c is not None and f.c.origen == 'xml' and f.tipo == '01'
+           and f.estado != 'excluido' and f.c.forma_pago]
+    por_cliente: dict[str, set] = {}
+    for f in xml:
+        por_cliente.setdefault(f.cli_doc, set()).add(f.condicion)
+    todas = {f.condicion for f in xml}
+    for f in lote.filas:
+        c = f.c
+        if c is None or c.origen != 'excel' or c.forma_pago or f.tipo != '01' or f.estado == 'excluido':
+            continue
+        cli = por_cliente.get(f.cli_doc, set())
+        if len(cli) == 1:
+            cond, mot = next(iter(cli)), 'como sus otras facturas del mes con XML'
+        elif not cli and len(todas) == 1:
+            cond, mot = next(iter(todas)), 'como las demás facturas del mes con XML'
+        else:
+            continue
+        if cond != f.condicion:
+            aplicar_cambio(f, ctx, condicion=cond)
+        f.avisos.append(f'{"Contado" if cond == "CON" else "Crédito"} {mot}')
 
 
 def aplicar_cambio(f: Fila, ctx: Contexto, **cambios):

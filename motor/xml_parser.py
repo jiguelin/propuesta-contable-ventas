@@ -221,6 +221,9 @@ class Comprobante:
     categoria: Optional[str] = None
     razon: str = ''
     tiene_igv: bool = False
+    # origen del dato: 'xml' o 'excel' (registro de ventas / propuesta SUNAT cuando falta el XML)
+    origen: str = 'xml'
+    avisos_lectura: List[str] = field(default_factory=list)
     # errores de parseo
     error: str = ''
 

@@ -52,6 +52,6 @@ def correr(plan, mapa, tc, entidades):
                             codigo_boleta='03', nombre_boleta='BOLETA DE VENTA', **kw)
         historial = HistorialTC(list(tc._d.values()) + list(tc_extra))
         ctx = Contexto(cfg, plan, mapa, historial, RegistroExterior(registros_exterior or [], entidades),
-                       buscar_original=buscar_original)
+                       buscar_original=buscar_original, entidades=entidades)
         return procesar(ctx, periodo, leer_archivos(arch)), ctx
     return _correr

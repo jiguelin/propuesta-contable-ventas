@@ -201,6 +201,7 @@ class Contexto:
     memoria: dict[tuple[str, str], str] = field(default_factory=dict)   # (ruc_cliente, firma) → cuenta
     palabras_cuenta: dict[str, list[str]] = field(default_factory=dict)
     buscar_original: Callable[[str, str, int], dict | None] | None = None   # NC/ND y anticipos de meses previos
+    entidades: object | None = None                              # Entidades de NewContaSis (nombres de clientes)
     ia: Callable | None = None
 
     def cuenta_de(self, concepto: str) -> Destino | None:
@@ -219,9 +220,24 @@ def firma(c: Comprobante) -> str:
 
 
 # ----------------------------------------------------------------------------- piezas
+SIEMPRE_GENERICOS = {'00000001', '0000000001', '00000000001'}     # "cliente varios" en la propuesta SUNAT
+
+
 def es_generico(doc: str, genericos: list[str]) -> bool:
     d = (doc or '').strip()
-    return d in genericos or (d and set(d) <= {'0'}) or d in ('-', '--')
+    return d in genericos or (d and set(d) <= {'0'}) or d in ('-', '--') or d in SIEMPRE_GENERICOS
+
+
+def _nombre_faltante(f: 'Fila', ctx: 'Contexto'):
+    """El Excel de ventas no trae el nombre de los clientes de boletas: se toma de las entidades o se arma."""
+    if f.cli_nombre or not f.cli_doc:
+        return
+    e = ctx.entidades.get(f.cli_doc) if ctx.entidades is not None else None
+    if e is not None and e.nombre:
+        f.cli_nombre = limpiar(e.nombre, True, 60)
+    else:
+        f.cli_nombre = f'CLIENTE {f.cli_doc}'
+        f.avisos.append(f'Sin nombre del cliente {f.cli_doc}: se usa "CLIENTE {f.cli_doc}"')
 
 
 def es_exportacion(c: Comprobante) -> bool:
@@ -478,7 +494,9 @@ def clasificar(c: Comprobante, ctx: Contexto, anticipos_ref: dict[str, str], lot
     f.fecha_venc = c.fecha_vencimiento or c.fecha_emision
     exp = es_exportacion(c)
     f.es_exportacion = exp
+    f.avisos.extend(c.avisos_lectura)
     cliente(c, ctx, exp, f)
+    _nombre_faltante(f, ctx)
     f.condicion, mot_cond = condicion(c, ctx.cfg)
     vinculado = c.doc_cliente in ctx.cfg.vinculados
 

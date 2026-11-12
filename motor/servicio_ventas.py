@@ -164,7 +164,7 @@ class Servicio:
         return Contexto(cfg=cfg, plan=plan, mapa=mapa, tc=self.historial_tc(),
                         exterior=RegistroExterior(self.db.exterior(ruc), ent),
                         reglas=self.db.reglas(ruc), memoria=self.db.memoria(ruc), palabras_cuenta=self.db.palabras(ruc),
-                        buscar_original=lambda t, s, n: self.db.comprobante(ruc, t, s, n),
+                        buscar_original=lambda t, s, n: self.db.comprobante(ruc, t, s, n), entidades=ent,
                         ia=crear_ia(self.api_key) if (usar_ia and self.api_key) else None)
 
     def procesar(self, ruc: str, periodo: str, archivos: list[tuple[str, bytes]], usar_ia: bool = True) -> tuple[Lote, Contexto]:
