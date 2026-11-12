@@ -1,2 +1,2 @@
 """Motor de la app Propuesta Contable de Ventas (XML SUNAT → NewContaSis)."""
-__version__ = '0.3.2'
+__version__ = '0.3.3'

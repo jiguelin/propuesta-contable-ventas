@@ -40,7 +40,7 @@ XML / ZIP ─▶ lector UBL (corrige codificación) ─▶ ¿es de la empresa y 
 | Exportación | Cliente del exterior ya creado → su código; nuevo → 10000000001, 10000000002… (nunca se repite). |
 | Detracción / percepción | Solo informativas en ventas: no se registran (AE–AJ, AO, AP vacíos). |
 | Tipo de cambio | En todas las filas (soles y dólares), el del día de emisión o el inmediato anterior. |
-| Moneda | Cada comprobante en su moneda: soles en soles (V = S) y dólares en dólares (V = D, W = total en US$). |
+| Moneda | NewContaSis lee I–P siempre en soles. Comprobantes en dólares: I–P convertidos con el TC, V = D, Q = TC y W = total en US$ (NewContaSis saca los dólares dividiendo entre Q). |
 | Notas de crédito | Importes en positivo; el tipo 07 indica que es nota de crédito. R–U con el documento modificado. |
 | Glosa | El texto del comprobante si cabe en 60 caracteres (varios ítems parecidos se combinan: "POR SERVICIO CONTABLE Y LABORAL MES SETIEMBRE"); si no, una glosa general. Se puede desactivar por empresa. |
 | Centro de costos | Opcional por empresa (interruptor en ① Empresa): se sube el Excel de centros de costos y se elige el de servicios y el de mercaderías. Va en la columna Z; la AA queda vacía. |
@@ -109,5 +109,5 @@ tests/                       ← pytest con XML anonimizados y sintéticos
 
 ## A confirmar en la primera importación real en NewContaSis
 
-- Columna W ("equivalente en dólares") con el total en US$ de los comprobantes en dólares.
+- Comprobante en dólares: en el visor deben salir los importes en US$ de la factura (I–P van en soles; W en US$).
 - ICBPER (impuesto a las bolsas de plástico, S/ 0.50 por bolsa) solo en AQ, sin sumarlo en O.

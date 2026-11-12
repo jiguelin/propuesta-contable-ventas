@@ -129,15 +129,10 @@ def test_dolares_al_contado(correr):                            # caso 27
     f = fila(lote, 'E001-130')
     m = importes(f, ctx.cfg)
     assert f.tc == 3.368 and f.cuenta_total == '1012' and f.moneda == 'D'
-    # en dólares, como vienen en el XML; V = D y Q = TC
-    assert (m['J'], m['N'], m['P'], m['W']) == (Decimal('1500.00'), Decimal('270.00'), Decimal('1770.00'), Decimal('1770.00'))
+    # NewContaSis lee J–P en soles: US$ × TC, con V = D, Q = TC y W = total en US$ (prueba real RALUMIN)
+    assert (m['J'], m['N'], m['P'], m['W']) == (Decimal('5052.00'), Decimal('909.36'), Decimal('5961.36'), Decimal('1770.00'))
     x = fila_excel(f, ctx.cfg)
-    assert (col(x, 'V'), col(x, 'Q')) == ('D', 3.368)
-    # opción por empresa: convertir a soles
-    ms = importes(f, ConfigEmpresa(ruc=MINERA, usd_en_soles=True))
-    assert (ms['J'], ms['N'], ms['P'], ms['W']) == (Decimal('5052.00'), Decimal('909.36'), Decimal('5961.36'), Decimal('1770.00'))
-    # importes en soles nunca con V = D (NewContaSis los volvería a multiplicar por el TC)
-    assert col(fila_excel(f, ConfigEmpresa(ruc=MINERA, usd_en_soles=True)), 'V') == 'S'
+    assert (col(x, 'V'), col(x, 'Q'), col(x, 'W')) == ('D', 3.368, 1770.0)
     g = fila(lote, 'E001-131')
     mg = importes(g, ConfigEmpresa(ruc=MINERA, usd_en_soles=True))
     assert mg['J'] + mg['N'] == mg['P']                         # cuadre tras convertir

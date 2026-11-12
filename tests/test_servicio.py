@@ -82,10 +82,10 @@ def test_hueco_al_inicio_del_mes_y_nc_de_mes_anterior(servicio):
 def test_migracion_config_antigua():
     from motor.clasificador_ventas import ConfigEmpresa
     vieja = ConfigEmpresa.desde_dict({'ruc': '20000000101', 'usd_en_soles': True, 'nc_negativo': True})
-    assert not vieja.usd_en_soles and not vieja.nc_negativo
-    v2 = ConfigEmpresa.desde_dict({'ruc': '20000000101', 'usd_en_soles': True, 'nc_negativo': True, 'version_config': 2})
-    assert not v2.usd_en_soles and v2.nc_negativo                   # v0.3.2: dólares siempre en dólares
-    nueva = ConfigEmpresa.desde_dict({'ruc': '20000000101', 'nc_negativo': True, 'version_config': 3})
+    assert vieja.usd_en_soles and not vieja.nc_negativo
+    v3 = ConfigEmpresa.desde_dict({'ruc': '20000000101', 'usd_en_soles': False, 'nc_negativo': True, 'version_config': 3})
+    assert v3.usd_en_soles and v3.nc_negativo                       # v0.3.3: J–P en soles, W en US$
+    nueva = ConfigEmpresa.desde_dict({'ruc': '20000000101', 'nc_negativo': True, 'version_config': 4})
     assert nueva.nc_negativo                                        # elección explícita posterior se respeta
 
 

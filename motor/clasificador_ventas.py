@@ -58,7 +58,7 @@ class ConfigEmpresa:
     actividad_origen: str = ''              # 'usuario' si la eligió la persona (el giro del plan no la cambia)
     modo_contado: str = 'directo'           # directo (AD = caja) | provision (AD = 1212)
     tc_tipo: str = 'venta'                  # venta | compra
-    usd_en_soles: bool = False              # False: importes en dólares (V = D, Q = TC). True: convertidos a soles
+    usd_en_soles: bool = True               # I–P en soles (importe × TC), V = D, Q = TC, W = total US$ (formato NewContaSis)
     nc_negativo: bool = False               # las NC van en positivo; el tipo 07 indica que es nota de crédito
     anticipo_pasivo: bool = True            # anticipo → 1221; final → asiento Debe 1221 / Haber 70
     medio_pago_defecto: str = ''
@@ -76,7 +76,7 @@ class ConfigEmpresa:
     cc_servicios: str = ''                  # ej. 0104 VENTA SERVICIOS
     cc_mercaderia: str = ''                 # ej. 0105 VENTA PRODUCTOS
     cc_productos: str = ''                  # productos terminados (si está vacío se usa el de mercadería)
-    version_config: int = 3
+    version_config: int = 4
 
     @classmethod
     def desde_dict(cls, d: dict) -> 'ConfigEmpresa':
@@ -85,10 +85,10 @@ class ConfigEmpresa:
         if v < 2:
             # v0.1.0 guardaba dólares convertidos a soles y NC en negativo; la regla confirmada es la contraria
             d['usd_en_soles'], d['nc_negativo'] = False, False
-        if v < 3:
-            # v0.3.2: dólares siempre en dólares (la opción ya no está en pantalla)
-            d['usd_en_soles'] = False
-        d['version_config'] = 3
+        if v < 4:
+            # v0.3.3: NewContaSis lee I–P en soles; los dólares se convierten con el TC (la opción no está en pantalla)
+            d['usd_en_soles'] = True
+        d['version_config'] = 4
         campos = {f for f in cls.__dataclass_fields__}
         return cls(**{k: v for k, v in d.items() if k in campos})
 
