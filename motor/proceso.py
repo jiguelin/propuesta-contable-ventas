@@ -220,6 +220,30 @@ def _condicion_desde_xml(lote: Lote, ctx: Contexto):
         f.avisos.append(f'{"Contado" if cond == "CON" else "Crédito"} {mot}')
 
 
+def _cambiar_referencia(f: Fila, ctx: Contexto, doc_ref: str, original: Fila | None = None):
+    """NC/ND: la persona escribe el comprobante que modifica (p. ej. B003-7203). Se completan tipo y fecha con el
+    original del lote o de lotes anteriores y, si no se cambió a mano, se hereda su cuenta de ventas."""
+    rs, rn = separar((doc_ref or '').strip().upper().replace(' ', '-'))
+    if not rs or not rn:
+        f.ref_serie = f.ref_numero = f.ref_tipo = f.ref_fecha = ''
+        f.estado, f.motivo = 'revisar', 'Nota sin documento modificado'
+        return
+    f.ref_serie, f.ref_numero = rs, str(rn)
+    f.ref_tipo = original.tipo if original is not None else ('03' if rs[:1] == 'B' else '01')
+    orig_dict = None
+    if original is None and ctx.buscar_original:
+        orig_dict = ctx.buscar_original(f.ref_tipo, rs, rn)
+    f.ref_fecha = original.fecha if original is not None else (orig_dict or {}).get('fecha', '')
+    cuenta = original.cuenta_base if original is not None else (orig_dict or {}).get('cuenta_base', '')
+    if cuenta and not f.base_manual:
+        f.cuenta_base, f.origen, f.confianza = cuenta, 'referencia', 95
+        f.explicacion = f'misma cuenta que {rs}-{rn}'
+    if not f.ref_fecha:
+        f.estado, f.motivo = 'revisar', f'Falta la fecha de {rs}-{rn} (no está en este lote ni en lotes anteriores)'
+    elif f.estado == 'revisar' and f.motivo.startswith(('Nota sin documento', 'Falta la fecha')):
+        f.estado, f.motivo = 'ok', ''
+
+
 def aplicar_cambio(f: Fila, ctx: Contexto, **cambios):
     """Edición desde la pantalla: actualiza la fila y recalcula lo que depende de ella."""
     if 'cuenta_base' in cambios and cambios['cuenta_base'] != f.cuenta_base:
@@ -254,6 +278,8 @@ def aplicar_cambio(f: Fila, ctx: Contexto, **cambios):
                 g = _cl(f.c, ctx, {}, {})
                 f.cuenta_base, f.concepto = g.cuenta_base, g.concepto
         f.glosa = glosa_de(f, ctx.cfg.glosa_detalle)
+    if 'doc_ref' in cambios and f.tipo in ('07', '08'):
+        _cambiar_referencia(f, ctx, cambios['doc_ref'], cambios.get('original'))
     if 'centro_costos' in cambios:
         f.centro_costos = (cambios['centro_costos'] or '')[:9]
     if 'glosa' in cambios:

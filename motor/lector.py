@@ -124,8 +124,15 @@ def combinar(out: Lectura, del_excel: list[Comprobante], anulados_excel: list[Ba
         x = por_clave.get(k)
         if x is not None:
             repetidos += 1
-            if abs(x.importe_total - c.importe_total) > Decimal('0.05'):
-                x.avisos_lectura.append(f'El Excel indica total {c.importe_total:,.2f} y el XML {x.importe_total:,.2f}: se usa el XML')
+            q = getattr(c, 'tc_excel', Decimal(0))
+            if x.moneda_codigo == 'USD' and c.moneda_codigo == 'USD':
+                ok = abs(x.importe_total - c.importe_total) <= Decimal('0.10')        # ambos ya en US$
+            else:
+                ok = abs(x.importe_total - c.importe_total) <= Decimal('0.05')
+            if not ok:
+                sim = 'US$' if x.moneda_codigo == 'USD' else 'S/'
+                x.avisos_lectura.append(f'El Excel indica total {c.simbolo} {c.importe_total:,.2f} y el XML {sim} '
+                                        f'{x.importe_total:,.2f}: se usa el XML')
             continue
         c.avisos_lectura.insert(0, 'Del Excel (sin XML): sin detalle de ítems, glosa general')
         out.comprobantes.append(c)

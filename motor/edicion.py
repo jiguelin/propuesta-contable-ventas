@@ -24,6 +24,11 @@ def marca(v) -> bool:
     return bool(v)
 
 
+def ref_de(f: Fila) -> str:
+    """Documento modificado de una NC/ND como se muestra en la tabla (B003-7203)."""
+    return f'{f.ref_serie}-{f.ref_numero}' if f.ref_serie and f.ref_numero else ''
+
+
 def aplicar_ediciones(registros: list[dict], por_clave: dict[str, Fila], ctx) -> tuple[bool, list[Fila]]:
     """registros = filas del editor como dict (clave, ✓, Cond, AB cuenta, AD cuenta, Anticipo, Glosa).
     Devuelve (hubo_cambios, filas_seleccionadas)."""
@@ -48,6 +53,11 @@ def aplicar_ediciones(registros: list[dict], por_clave: dict[str, Fila], ctx) ->
             cambios['centro_costos'] = texto(r['CC'])
         if 'Glosa' in r and texto(r['Glosa']) != f.glosa:
             cambios['glosa'] = texto(r['Glosa'])
+        if 'Doc. modificado' in r and f.tipo in ('07', '08') and texto(r['Doc. modificado']).upper() != ref_de(f):
+            cambios['doc_ref'] = texto(r['Doc. modificado'])
+            ser, _, num = cambios['doc_ref'].upper().replace(' ', '-').partition('-')
+            cambios['original'] = next((g for g in por_clave.values() if g.tipo in ('01', '03') and g.serie == ser
+                                        and num.lstrip('0').isdigit() and g.numero == int(num)), None)
         if cambios:
             aplicar_cambio(f, ctx, **cambios)
             cambio = True

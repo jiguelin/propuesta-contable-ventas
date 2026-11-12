@@ -26,13 +26,13 @@ TIPOS = {'01': ('factura', 'FACTURA'), '03': ('boleta', 'BOLETA DE VENTA'), '07'
 D2 = Decimal('0.01')
 
 
-def _dec(v) -> Decimal:
+def _dec(v, decimales: int = 2) -> Decimal:
     if v in (None, '', '-'):
         return Decimal(0)
     try:
         if isinstance(v, float):
-            v = round(v, 2)
-        return Decimal(str(v).replace(',', '').strip()).quantize(D2)
+            v = round(v, decimales)
+        return Decimal(str(v).replace(',', '').strip()).quantize(Decimal(1).scaleb(-decimales))
     except (InvalidOperation, ValueError):
         return Decimal(0)
 
@@ -112,9 +112,21 @@ def leer_excel_ventas(data: bytes, nombre: str = 'ventas.xlsx') -> tuple[list[Co
             nom = _txt(r[7])
             c.nombre_cliente = '' if nom in ('-', '--', '0') else nom
             mon = _txt(r[21]).upper()
-            if mon in ('D', 'USD', '2', 'US$', 'DOLARES', 'DÓLARES'):
+            q = _dec(r[16], 4)
+            c.tc_excel = q                                   # TC con que el Excel expresó los importes
+            dolares = mon in ('D', 'USD', '2', 'US$', 'DOLARES', 'DÓLARES') or (not mon and q > Decimal('1.5'))
+            if dolares:
                 c.moneda_codigo, c.moneda, c.simbolo = 'USD', 'dólares', 'US$'
-                c.avisos_lectura.append('En dólares según el Excel: verifique los importes con el comprobante')
+                if q > Decimal('1.5'):
+                    # la propuesta SUNAT trae los importes en soles (US$ × TC): se vuelven a dólares
+                    imp = {k: (v / q).quantize(D2) for k, v in imp.items()}
+                    dif = imp['P'] - sum(imp[k] for k in ('I', 'J', 'K', 'L', 'M', 'N', 'O', 'AQ'))
+                    if dif and abs(dif) <= Decimal('0.05'):
+                        imp['N' if imp['N'] else 'J'] += dif
+                    c.avisos_lectura.append(f'En dólares según el Excel (TC {q}): importes llevados a US$ '
+                                            f'(total US$ {imp["P"]:,.2f}). Verifique con el comprobante')
+                else:
+                    c.avisos_lectura.append('En dólares según el Excel: verifique los importes con el comprobante')
             c.exportacion, c.gravadas, c.exoneradas, c.inafectas = imp['I'], imp['J'], imp['K'], imp['L']
             c.isc, c.igv, c.otros_tributos, c.importe_total, c.icbper = imp['M'], imp['N'], imp['O'], imp['P'], imp['AQ']
             c.valor_venta = c.exportacion + c.gravadas + c.exoneradas + c.inafectas

@@ -273,7 +273,7 @@ def cliente(c: Comprobante, ctx: Contexto, exportacion: bool, f: Fila):
         f.cli_tipo, f.cli_doc, f.cli_nombre, f.cli_origen = '6', doc[:11], nombre, 'xml'
         return
     if cod in ('1', '4', '7', 'A'):
-        f.cli_tipo, f.cli_doc, f.cli_nombre, f.cli_origen = cod, doc[:11], nombre, 'xml'
+        f.cli_tipo, f.cli_doc, f.cli_nombre, f.cli_origen = cod, doc[:15], nombre, 'xml'   # pasaporte: hasta 15
         if cod == '1' and not re.fullmatch(r'\d{8}', doc):
             f.avisos.append(f'DNI con formato raro: "{doc}"')
         return
@@ -282,7 +282,7 @@ def cliente(c: Comprobante, ctx: Contexto, exportacion: bool, f: Fila):
         if c.tipo_codigo == '01':
             f.estado, f.motivo = 'revisar', 'Factura sin RUC del cliente'
         return
-    f.cli_tipo, f.cli_doc, f.cli_nombre, f.cli_origen = '0', doc[:11], nombre, 'xml'
+    f.cli_tipo, f.cli_doc, f.cli_nombre, f.cli_origen = '0', doc[:15], nombre, 'xml'
 
 
 def condicion(c: Comprobante, cfg: ConfigEmpresa) -> tuple[str, str]:

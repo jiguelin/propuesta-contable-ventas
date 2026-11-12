@@ -19,7 +19,7 @@ from motor import __version__
 from motor.clasificador_ventas import ConfigEmpresa, actividad_desde_rubro
 from motor.conceptos import CONCEPTOS, palabras_clave
 from motor.db import url_local
-from motor.edicion import aplicar_ediciones
+from motor.edicion import aplicar_ediciones, ref_de
 from motor.filtros import filtrar
 from motor.proceso import aplicar_cambio
 from motor.servicio_ventas import Servicio
@@ -323,6 +323,7 @@ with t_plan:
         st.markdown('#### Mapa de conceptos ' + ('✅ confirmado' if confirmado else '⚠️ sin confirmar'))
         st.caption('Cada concepto se traduce a una cuenta del plan de esta empresa. Si la cuenta tiene subcuentas '
                    '(ej. 70321 → 7032101, 7032102…), la app elige la subcuenta por las palabras de los ítems.')
+        hay_notas = any(f.tipo in ('07', '08') for f in filas)
         df = pd.DataFrame([{'Concepto': k, 'Descripción': CONCEPTOS[k].nombre,
                             'Obligatorio': '✔' if CONCEPTOS[k].obligatorio else '',
                             'Cuenta': d.cuenta,
@@ -448,6 +449,7 @@ with t_ventas:
             'Cond': f.condicion, 'AB cuenta': f.cuenta_base,
             'AB descripción': (plan.get(f.cuenta_base).descripcion[:40] if plan.get(f.cuenta_base) else ''),
             'AD cuenta': f.cuenta_total, 'Anticipo': f.es_anticipo, 'CC': f.centro_costos, 'Glosa': f.glosa,
+            **({'Doc. modificado': ref_de(f) if f.tipo in ('07', '08') else ''} if hay_notas else {}),
             'Por qué': f.explicacion or f.motivo, 'Avisos': ' · '.join(f.avisos)} for f in filas])
         cfgcols = {
             'clave': None,
@@ -459,10 +461,12 @@ with t_ventas:
             'AD cuenta': st.column_config.SelectboxColumn(options=op_total, help='Cuenta del total: 1011/1012 contado, 1212 crédito'),
             'Anticipo': st.column_config.CheckboxColumn(help='Marque si es un comprobante de anticipo (va a 1221)'),
             'Glosa': st.column_config.TextColumn(max_chars=60),
+            'Doc. modificado': st.column_config.TextColumn(max_chars=14, help='Solo notas de crédito/débito: comprobante que '
+                                                           'modifican, p. ej. B003-7203 (el Excel no siempre lo trae)'),
             'CC': (st.column_config.TextColumn('CC', max_chars=9, help='Centro de costos (columna Z)')
                    if ctx.cfg.usar_centro_costos else None),
         }
-        bloqueadas = [c for c in df.columns if c not in ('✓', 'Cond', 'AB cuenta', 'AD cuenta', 'Anticipo', 'CC', 'Glosa')]
+        bloqueadas = [c for c in df.columns if c not in ('✓', 'Cond', 'AB cuenta', 'AD cuenta', 'Anticipo', 'CC', 'Glosa', 'Doc. modificado')]
         ed = st.data_editor(df, hide_index=True, use_container_width=True, column_config=cfgcols,
                             disabled=bloqueadas if editable else True, key=f'ed_{key}_{ss.ver}', height=min(38 * len(df) + 40, 560))
         cambio, sel = aplicar_ediciones(ed.to_dict('records'), {f.clave: f for f in lote.filas}, ctx)
