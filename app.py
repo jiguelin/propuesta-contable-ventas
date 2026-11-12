@@ -406,10 +406,15 @@ with t_ventas:
     if st.button('GENERAR PROPUESTA', type='primary', disabled=not xmls, use_container_width=True):
         with st.spinner('Leyendo y clasificando…'):
             lote, ctx = S.procesar(ss.ruc, periodo, [(f.name, f.getvalue()) for f in xmls], usar_ia)
+        lote.version = __version__
         ss.lote, ss.ctx, ss.ver = lote, ctx, ss.ver + 1
         st.rerun()
 
     lote, ctx = ss.lote, ss.ctx
+    if lote is not None and getattr(lote, 'version', None) != __version__:
+        # propuesta generada con una versión anterior de la app (antes de una actualización): se descarta
+        ss.lote = lote = None
+        st.info('La app se actualizó. Vuelva a presionar GENERAR PROPUESTA.', icon='🔄')
     if lote is None or lote.ruc != ss.ruc:
         st.stop()
 
