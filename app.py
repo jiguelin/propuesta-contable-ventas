@@ -179,8 +179,8 @@ with t_emp:
                         format_func={'directo': 'Directo a caja (AD = 1011 soles / 1012 dólares)',
                                      'provision': 'Provisión + cobro (AD = 1212; NewContaSis genera el cobro)'}.get)
         tc_tipo = c2.radio('Tipo de cambio', ['venta', 'compra'], index=0 if cfg.tc_tipo == 'venta' else 1, horizontal=True)
-        usd = c2.checkbox('Convertir dólares a soles (normalmente no)', cfg.usd_en_soles,
-                          help='Por defecto los comprobantes en dólares van en dólares, con V = D y el TC en Q.')
+        c2.caption('Comprobantes en dólares: importes en dólares, V = D y el TC en Q. NewContaSis convierte a soles.')
+        usd = False
         nc_neg = c2.checkbox('Notas de crédito en negativo (normalmente no)', cfg.nc_negativo,
                              help='Por defecto van en positivo: el tipo 07 indica que es nota de crédito.')
         ant = c2.checkbox('Anticipos a 1221 y asiento Debe 1221 / Haber 70 en la factura final', cfg.anticipo_pasivo)

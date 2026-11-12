@@ -76,14 +76,19 @@ class ConfigEmpresa:
     cc_servicios: str = ''                  # ej. 0104 VENTA SERVICIOS
     cc_mercaderia: str = ''                 # ej. 0105 VENTA PRODUCTOS
     cc_productos: str = ''                  # productos terminados (si está vacío se usa el de mercadería)
-    version_config: int = 2
+    version_config: int = 3
 
     @classmethod
     def desde_dict(cls, d: dict) -> 'ConfigEmpresa':
         d = dict(d or {})
-        if d.get('version_config', 1) < 2:
+        v = d.get('version_config', 1)
+        if v < 2:
             # v0.1.0 guardaba dólares convertidos a soles y NC en negativo; la regla confirmada es la contraria
-            d['usd_en_soles'], d['nc_negativo'], d['version_config'] = False, False, 2
+            d['usd_en_soles'], d['nc_negativo'] = False, False
+        if v < 3:
+            # v0.3.2: dólares siempre en dólares (la opción ya no está en pantalla)
+            d['usd_en_soles'] = False
+        d['version_config'] = 3
         campos = {f for f in cls.__dataclass_fields__}
         return cls(**{k: v for k, v in d.items() if k in campos})
 

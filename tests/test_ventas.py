@@ -136,6 +136,8 @@ def test_dolares_al_contado(correr):                            # caso 27
     # opción por empresa: convertir a soles
     ms = importes(f, ConfigEmpresa(ruc=MINERA, usd_en_soles=True))
     assert (ms['J'], ms['N'], ms['P'], ms['W']) == (Decimal('5052.00'), Decimal('909.36'), Decimal('5961.36'), Decimal('1770.00'))
+    # importes en soles nunca con V = D (NewContaSis los volvería a multiplicar por el TC)
+    assert col(fila_excel(f, ConfigEmpresa(ruc=MINERA, usd_en_soles=True)), 'V') == 'S'
     g = fila(lote, 'E001-131')
     mg = importes(g, ConfigEmpresa(ruc=MINERA, usd_en_soles=True))
     assert mg['J'] + mg['N'] == mg['P']                         # cuadre tras convertir

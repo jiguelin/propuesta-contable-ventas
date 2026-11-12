@@ -83,8 +83,10 @@ def test_migracion_config_antigua():
     from motor.clasificador_ventas import ConfigEmpresa
     vieja = ConfigEmpresa.desde_dict({'ruc': '20000000101', 'usd_en_soles': True, 'nc_negativo': True})
     assert not vieja.usd_en_soles and not vieja.nc_negativo
-    nueva = ConfigEmpresa.desde_dict({'ruc': '20000000101', 'usd_en_soles': True, 'version_config': 2})
-    assert nueva.usd_en_soles                                       # elección explícita posterior se respeta
+    v2 = ConfigEmpresa.desde_dict({'ruc': '20000000101', 'usd_en_soles': True, 'nc_negativo': True, 'version_config': 2})
+    assert not v2.usd_en_soles and v2.nc_negativo                   # v0.3.2: dólares siempre en dólares
+    nueva = ConfigEmpresa.desde_dict({'ruc': '20000000101', 'nc_negativo': True, 'version_config': 3})
+    assert nueva.nc_negativo                                        # elección explícita posterior se respeta
 
 
 def test_cargar_centros_de_costos(servicio, tmp_path):

@@ -75,6 +75,12 @@ def importes(f: Fila, cfg: ConfigEmpresa) -> dict:
     return v
 
 
+def _moneda(f, cfg) -> str:
+    """V coherente con los importes: si (opción heredada) se convirtieron a soles, V = S. Nunca importes en soles
+    con V = D, porque NewContaSis los volvería a multiplicar por el TC (error detectado en compras, RALUMIN)."""
+    return 'S' if (f.moneda == 'D' and cfg.usd_en_soles) else f.moneda
+
+
 def fila_excel(f: Fila, cfg: ConfigEmpresa) -> list:
     m = importes(f, cfg)
     otros = m['O'] != 0
@@ -87,7 +93,7 @@ def fila_excel(f: Fila, cfg: ConfigEmpresa) -> list:
         _fecha(f.ref_fecha) if f.tipo in ('07', '08') else None,                                     # R
         f.ref_tipo if f.tipo in ('07', '08') else '', f.ref_serie if f.tipo in ('07', '08') else '',
         f.ref_numero if f.tipo in ('07', '08') else '',                                              # S-U
-        f.moneda, m['W'], _fecha(f.fecha_venc or f.fecha), f.condicion,                              # V-Y
+        _moneda(f, cfg), m['W'], _fecha(f.fecha_venc or f.fecha), f.condicion,                       # V-Y
         f.centro_costos, '', f.cuenta_base, f.cuenta_otros if otros else '', f.cuenta_total,         # Z-AD (CC2 vacío)
         '', None, None, '', '', None, '',                                                            # AE-AK (régimen especial: no se registra en ventas)
         float(tasa) if tasa else None, (f.glosa or '')[:60],                                         # AL-AM
