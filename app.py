@@ -323,7 +323,6 @@ with t_plan:
         st.markdown('#### Mapa de conceptos ' + ('✅ confirmado' if confirmado else '⚠️ sin confirmar'))
         st.caption('Cada concepto se traduce a una cuenta del plan de esta empresa. Si la cuenta tiene subcuentas '
                    '(ej. 70321 → 7032101, 7032102…), la app elige la subcuenta por las palabras de los ítems.')
-        hay_notas = any(f.tipo in ('07', '08') for f in filas)
         df = pd.DataFrame([{'Concepto': k, 'Descripción': CONCEPTOS[k].nombre,
                             'Obligatorio': '✔' if CONCEPTOS[k].obligatorio else '',
                             'Cuenta': d.cuenta,
@@ -441,6 +440,7 @@ with t_ventas:
         if not filas:
             st.caption('Sin filas.')
             return
+        hay_notas = any(f.tipo in ('07', '08') for f in filas)
         df = pd.DataFrame([{
             'clave': f.clave, '✓': False, '': f.semaforo, 'Estado': ESTADOS[f.estado], 'Fecha': f.fecha, 'Tipo': f.tipo,
             'Serie-Número': f.id, 'Fuente': ('Excel' if f.c is not None and f.c.origen == 'excel' else ('XML' if f.c is not None else '')),
