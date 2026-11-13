@@ -309,7 +309,7 @@ with t_plan:
     if plan_f and st.button('Cargar plan', type='primary'):
         try:
             p, avisos = S.cargar_plan(ss.ruc, plan_f.getvalue())
-            st.success(f'{len(p.cuentas)} cuentas cargadas ({len(p.hojas())} imputables). Revise y confirme el mapa de conceptos.')
+            st.success(f'{len(p.cuentas)} cuentas cargadas ({len(p.imputables())} de movimiento). Revise y confirme el mapa de conceptos.')
             for a in avisos:
                 st.warning(a)
             ss.lote = None
@@ -319,12 +319,15 @@ with t_plan:
     if not plan.cuentas:
         st.info('Cargue el plan de cuentas de la empresa para continuar.')
     else:
+        if not any(c.movimiento for c in plan.cuentas):
+            st.info('Vuelva a subir el plan de cuentas: esta versión distingue las cuentas de digitar (sin negrita, como '
+                    'la 1011) de las de título (en negrita, como la 101).', icon='🔄')
         mapa, confirmado = S.mapa(ss.ruc, plan)
         st.markdown('#### Mapa de conceptos ' + ('✅ confirmado' if confirmado else '⚠️ sin confirmar'))
         st.caption('Cada concepto se traduce a una cuenta del plan de esta empresa. En las cuentas de ventas (70…), si la '
                    'cuenta tiene subcuentas (ej. 70321 → 7032101, 7032102…), la app elige la subcuenta por las palabras de los '
-                   'ítems. Caja, cuentas por cobrar y anticipos deben ser una cuenta de movimiento: si en el plan la 1011 '
-                   'tiene subcuentas (1011001, 1011002…), escriba la que corresponda.')
+                   'ítems. Caja, cuentas por cobrar y anticipos van a la cuenta indicada, que debe ser de digitar (en el plan '
+                   'de NewContaSis, sin negrita).')
 
         def _subcuentas(k, d):
             if k in CONCEPTOS_CUENTA_FIJA and d.cuenta:
@@ -455,7 +458,7 @@ with t_ventas:
     m6.metric('Total S/', f"{sum(float(f.c.importe_total) * (f.tc if f.moneda == 'D' and f.tc else 1) for f in exp if f.c is not None):,.0f}")
 
     plan = ctx.plan
-    hojas = [c.codigo for c in plan.hojas()]
+    hojas = [c.codigo for c in plan.imputables()]   # cuentas que aceptan asientos en NewContaSis
     op_base = sorted({c for c in hojas if c[:2] in ('70', '75', '12', '16', '45', '46', '49')} | {f.cuenta_base for f in lote.filas if f.cuenta_base})
     op_total = sorted({c for c in hojas if c[:2] in ('10', '12', '13', '14', '16', '17')} | {f.cuenta_total for f in lote.filas if f.cuenta_total})
 

@@ -381,3 +381,26 @@ def test_caja_con_subcuentas_debe_ser_cuenta_de_movimiento():
     cuentas['CAJA_PEN'] = '1011'
     err = validar_mapa(plan, cuentas)
     assert len(err) == 1 and 'cuenta de título' in err[0] and '1011003 CAJA EFECTIVO' in err[0]
+
+
+def test_cuenta_de_movimiento_con_subcuentas_se_usa_directo():
+    """Plan de NewContaSis con columna ANALISIS: la 1011 tiene subcuentas pero también ANALISIS (Bancos/Detalle),
+    o sea acepta asientos. Se usa la 1011, como hace el estudio en todas sus empresas (caso ESSENTTA)."""
+    from motor.conceptos import opciones_fijas, sugerir_mapa, validar_mapa
+    from motor.plan_cuentas import Cuenta, PlanCuentas
+    plan = PlanCuentas([Cuenta(c, d, movimiento=m) for c, d, m in [
+        ('10', 'EFECTIVO', 'N'), ('101', 'CAJA', 'N'), ('1011', 'CAJA MN', 'S'), ('1011001', 'CAJA TC - TARJETAS', 'S'),
+        ('1011002', 'CAJA TC - VARIOS', 'S'), ('1011003', 'CAJA EFECTIVO', 'S'), ('1012', 'CAJA ME', 'S'),
+        ('12', 'CXC', 'N'), ('121', 'FACTURAS', 'N'), ('1212', 'EMITIDAS EN CARTERA', 'S'), ('122', 'ANTICIPOS', 'N'),
+        ('1221', 'ANTICIPOS', 'S'), ('70', 'VENTAS', 'N'), ('701', 'MERCADERIAS', 'N'), ('7012', 'VENTA LOCAL', 'N'),
+        ('70121', 'TERCEROS', 'S'), ('703', 'SERVICIOS', 'N'), ('7032', 'LOCAL', 'N'), ('70321', 'TERCEROS', 'S')]])
+    plan.reindex()
+    assert plan.get('1011').acepta_movimiento and not plan.get('101').acepta_movimiento
+    m = sugerir_mapa(plan)
+    assert (m['CAJA_PEN'].cuenta, m['CAJA_PEN'].es_grupo) == ('1011', False)
+    assert opciones_fijas(plan, 'CAJA_PEN', '1011') == []
+    cuentas = {k: d.cuenta for k, d in m.items()}
+    assert validar_mapa(plan, cuentas) == []
+    cuentas['CAJA_PEN'] = '101'
+    assert 'título' in validar_mapa(plan, cuentas)[0]
+    assert '1011' in [c.codigo for c in plan.imputables()]

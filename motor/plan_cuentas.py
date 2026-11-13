@@ -25,7 +25,16 @@ class Cuenta:
     a_debe: str = ''       # destino automático (ej. 9411 / 20111)
     a_haber: str = ''      # contrapartida automática (ej. 7911 / 6111020)
     tipo: str = ''         # Activo / Pasivo / Gasto / Orden...
-    es_hoja: bool = True   # True si no tiene sub-cuentas debajo (cuenta "imputable")
+    es_hoja: bool = True   # True si no tiene sub-cuentas debajo
+    movimiento: str = ''   # 'S' de digitar / 'N' de título, según el Excel de NewContaSis; '' si no se sabe
+
+    @property
+    def acepta_movimiento(self) -> bool:
+        """¿Es cuenta de digitar (acepta asientos en NewContaSis)? En el Excel del plan las cuentas de título
+        van en negrita (10, 101, 701…) y las de digitar no, aunque tengan subcuentas: en ESSENTTA la 1011 tiene
+        1011001… y es de digitar. Si el Excel no trae negritas se usa la columna ANALISIS; si tampoco, se asume
+        que solo las cuentas sin subcuentas son de digitar."""
+        return self.movimiento == 'S' if self.movimiento in ('S', 'N') else self.es_hoja
 
     @property
     def etiqueta(self) -> str:
@@ -66,6 +75,10 @@ class PlanCuentas:
     def hojas(self) -> list[Cuenta]:
         return [c for c in self.cuentas if c.es_hoja]
 
+    def imputables(self) -> list[Cuenta]:
+        """Cuentas que aceptan asientos en NewContaSis (columna ANALISIS), con o sin subcuentas."""
+        return [c for c in self.cuentas if c.acepta_movimiento]
+
     def con_prefijo(self, prefijo: str, solo_hojas: bool = True) -> list[Cuenta]:
         return [c for c in self.cuentas if c.codigo.startswith(prefijo) and (c.es_hoja or not solo_hojas)]
 
@@ -88,7 +101,8 @@ class PlanCuentas:
 
     @classmethod
     def desde_registros(cls, regs: Iterable[dict], empresa: str = '', ruc: str = '') -> 'PlanCuentas':
-        p = cls([Cuenta(**{k: r.get(k, '') for k in ('codigo', 'descripcion', 'a_debe', 'a_haber', 'tipo')}) for r in regs], empresa, ruc)
+        p = cls([Cuenta(**{k: r.get(k, '') or '' for k in ('codigo', 'descripcion', 'a_debe', 'a_haber', 'tipo', 'movimiento')})
+                 for r in regs], empresa, ruc)
         p.reindex()
         return p
 
@@ -119,7 +133,7 @@ def leer_plan_excel(origen, hoja: str | None = None) -> PlanCuentas:
                     giro = s
 
     # localizar fila cabecera
-    idx_cab, col_desc, cols_cta = None, None, []
+    idx_cab, col_desc, cols_cta, col_analisis = None, None, [], None
     for i, r in enumerate(filas[:40]):
         vals = [_limpio(v).upper() for v in r]
         if any(v.startswith('DESCRIPCION') or v.startswith('DESCRIPCIÓN') for v in vals) and any(v == 'CUENTA' or v.startswith('CUENTA') for v in vals):
@@ -133,10 +147,20 @@ def leer_plan_excel(origen, hoja: str | None = None) -> PlanCuentas:
             col_debe = next((j for j, v in enumerate(vals) if 'DEBE' in v), None)
             col_haber = next((j for j, v in enumerate(vals) if 'HABER' in v), None)
             col_tipo = next((j for j, v in enumerate(vals) if v == 'TIPO'), None)
+            col_analisis = next((j for j, v in enumerate(vals) if v.startswith('ANALISIS') or v.startswith('ANÁLISIS')), None)
             break
 
     cuentas: list[Cuenta] = []
+    negritas: dict[str, bool] = {}
     if idx_cab is not None:
+        # negrita de la celda del código = cuenta de título (formato de NewContaSis)
+        for i, fila_celdas in enumerate(ws.iter_rows(min_row=idx_cab + 2), start=idx_cab + 1):
+            for j in cols_cta:
+                if j < len(fila_celdas) and _limpio(fila_celdas[j].value):
+                    fnt = getattr(fila_celdas[j], 'font', None)
+                    negritas[_limpio(fila_celdas[j].value)] = bool(fnt is not None and fnt.b)
+                    break
+        hay_negritas = any(negritas.values()) and not all(negritas.values())
         for r in filas[idx_cab + 1:]:
             codigo = ''
             for j in cols_cta:
@@ -149,7 +173,10 @@ def leer_plan_excel(origen, hoja: str | None = None) -> PlanCuentas:
             cuentas.append(Cuenta(codigo=codigo, descripcion=desc,
                                   a_debe=_limpio(r[col_debe]) if col_debe is not None and col_debe < len(r) else '',
                                   a_haber=_limpio(r[col_haber]) if col_haber is not None and col_haber < len(r) else '',
-                                  tipo=_limpio(r[col_tipo]) if col_tipo is not None and col_tipo < len(r) else ''))
+                                  tipo=_limpio(r[col_tipo]) if col_tipo is not None and col_tipo < len(r) else '',
+                                  movimiento=(('N' if negritas.get(codigo) else 'S') if hay_negritas else
+                                              '' if col_analisis is None else
+                                              'S' if col_analisis < len(r) and _limpio(r[col_analisis]) else 'N')))
     else:
         # Formato genérico: primera columna numérica = cuenta, siguiente con texto = descripción
         for r in filas:

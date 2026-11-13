@@ -54,9 +54,9 @@ CONCEPTOS: dict[str, Concepto] = {c.clave: c for c in [
 
 CONCEPTOS_VENTA = [k for k in CONCEPTOS if k.startswith(('VENTA_', 'SERVICIO_', 'ALQUILER', 'OTROS_INGRESOS'))]
 
-# Conceptos que van a UNA cuenta fija: no se elige subcuenta por los ítems, así que deben ser cuenta de
-# movimiento (hoja). Si en el plan la cuenta tiene divisionarias (ej. 1011 → 1011001, 1011002…), el usuario
-# elige cuál. NewContaSis no acepta asientos en una cuenta de título.
+# Conceptos que van a UNA cuenta fija: no se elige subcuenta por los ítems. Deben ser cuenta que acepte
+# movimiento en NewContaSis (columna ANALISIS del plan). La 1011 de ESSENTTA tiene subcuentas pero acepta
+# movimiento, así que se usa la 1011. Solo si es de título (ANALISIS vacío) se elige una subcuenta.
 CONCEPTOS_CUENTA_FIJA = ('ANTICIPO_RECIBIDO', 'CXC_PEN', 'CXC_USD', 'CAJA_PEN', 'CAJA_USD', 'ICBPER')
 _PREFERIDAS = {                                   # palabras para proponer la subcuenta (el usuario confirma)
     'CAJA_PEN': ('EFECTIVO', 'GENERAL', 'PRINCIPAL', 'MN', 'SOLES', 'NACIONAL'),
@@ -84,14 +84,15 @@ def opciones_fijas(plan: PlanCuentas, concepto: str, cuenta: str = '') -> list:
     ya son de movimiento, no hay nada que elegir → []."""
     for cod in (cuenta, *(CONCEPTOS[concepto].sugeridas[:1] if concepto in CONCEPTOS else ())):
         cu = plan.get(cod) if cod else None
-        if cu is not None and not cu.es_hoja:
-            hojas = plan.hojas_bajo(cod)
+        if cu is not None and not cu.acepta_movimiento:
+            hojas = [h for h in plan.imputables() if h.codigo.startswith(cod) and h.codigo != cod]
             if len(hojas) > 1:
                 return hojas
     if cuenta and plan.get(cuenta) is not None:
         for sug in (CONCEPTOS[concepto].sugeridas[:1] if concepto in CONCEPTOS else ()):
-            if cuenta.startswith(sug) and cuenta != sug and plan.get(sug) is not None and not plan.get(sug).es_hoja:
-                return plan.hojas_bajo(sug)
+            padre = plan.get(sug)
+            if cuenta.startswith(sug) and cuenta != sug and padre is not None and not padre.acepta_movimiento:
+                return [h for h in plan.imputables() if h.codigo.startswith(sug) and h.codigo != sug]
     return []
 
 
@@ -107,9 +108,10 @@ def validar_mapa(plan: PlanCuentas, cuentas: dict[str, str]) -> list[str]:
         cu = plan.get(cod)
         if cu is None:
             errores.append(f'{k}: la cuenta {cod} no existe en el plan')
-        elif k in CONCEPTOS_CUENTA_FIJA and not cu.es_hoja:
-            subs = '; '.join(f'{h.codigo} {h.descripcion[:40]}' for h in plan.hojas_bajo(cod)[:8])
-            errores.append(f'{k}: {cod} es una cuenta de título (tiene subcuentas). Elija una: {subs}')
+        elif k in CONCEPTOS_CUENTA_FIJA and not cu.acepta_movimiento:
+            subs = '; '.join(f'{h.codigo} {h.descripcion[:40]}' for h in opciones_fijas(plan, k, cod)[:8])
+            errores.append(f'{k}: {cod} es una cuenta de título (no acepta movimiento en NewContaSis). '
+                           f'Elija una subcuenta: {subs}')
     return errores
 
 
@@ -215,10 +217,13 @@ def sugerir_mapa(plan: PlanCuentas) -> dict[str, Destino]:
             d.hojas = [h.codigo for h in plan.hojas_bajo(d.cuenta)]
             if len(d.hojas) == 1:          # 122 con una sola subcuenta 1221 → se usa directo
                 d.cuenta, d.es_grupo, d.hojas = d.hojas[0], False, []
-            elif clave in CONCEPTOS_CUENTA_FIJA and d.hojas:
+            elif clave in CONCEPTOS_CUENTA_FIJA and plan.get(d.cuenta).acepta_movimiento:
+                d.es_grupo, d.hojas = False, []          # ej. 1011 con subcuentas pero de movimiento: se usa la 1011
+            elif clave in CONCEPTOS_CUENTA_FIJA:
                 grupo = d.cuenta
-                d.cuenta, d.es_grupo, d.hojas = proponer_hoja(plan, clave, d.hojas), False, []
-                d.nota = f'{grupo} tiene subcuentas: se propone {d.cuenta}. Revise cuál corresponde'
+                ops = [h.codigo for h in opciones_fijas(plan, clave, grupo)] or d.hojas
+                d.cuenta, d.es_grupo, d.hojas = proponer_hoja(plan, clave, ops), False, []
+                d.nota = f'{grupo} es cuenta de título: se propone {d.cuenta}. Revise cuál corresponde'
         if clave == 'CXC_USD' and d.cuenta:
             # si existe una subcuenta en moneda extranjera de la 1212, preferirla
             me = [h for h in plan.hojas_bajo('121') if re.search(r'\bM\.?E\.?\b|EXTRANJERA|DOLAR', h.descripcion.upper())]

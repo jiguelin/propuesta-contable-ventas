@@ -28,7 +28,8 @@ plan_cuentas = Table('plan_cuentas', meta,
                      Column('empresa_ruc', String(11), primary_key=True),
                      Column('codigo', String(12), primary_key=True),
                      Column('descripcion', String(300)),
-                     Column('tipo', String(40), default=''))
+                     Column('tipo', String(40), default=''),
+                     Column('movimiento', String(1), default=''))
 mapa_conceptos = Table('v_mapa_conceptos', meta,
                        Column('empresa_ruc', String(11), primary_key=True),
                        Column('concepto', String(40), primary_key=True),
@@ -114,6 +115,15 @@ class BaseDatos:
         self.es_sqlite = url.startswith('sqlite')
         self.engine = create_engine(url, pool_pre_ping=True, future=True)
         meta.create_all(self.engine)
+        self._migrar()
+
+    def _migrar(self):
+        """Columnas agregadas después de crear la base (create_all no altera tablas existentes)."""
+        from sqlalchemy import inspect, text
+        cols = {c['name'] for c in inspect(self.engine).get_columns('plan_cuentas')}
+        if 'movimiento' not in cols:
+            with self.engine.begin() as cx:
+                cx.execute(text("ALTER TABLE plan_cuentas ADD COLUMN movimiento VARCHAR(1) DEFAULT ''"))
 
     # ------------------------------------------------------------ empresas
     def empresas(self) -> list[dict]:
@@ -144,7 +154,8 @@ class BaseDatos:
             cx.execute(delete(plan_cuentas).where(plan_cuentas.c.empresa_ruc == ruc))
             if cuentas:
                 cx.execute(insert(plan_cuentas), [{'empresa_ruc': ruc, 'codigo': c['codigo'], 'descripcion': c['descripcion'][:300],
-                                                   'tipo': c.get('tipo', '')} for c in cuentas])
+                                                   'tipo': c.get('tipo', ''), 'movimiento': c.get('movimiento', '')}
+                                                  for c in cuentas])
             cx.execute(update(empresas).where(empresas.c.ruc == ruc).values(plan_cargado=_ahora()))
 
     def plan(self, ruc: str) -> list[dict]:

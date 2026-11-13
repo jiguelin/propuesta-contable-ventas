@@ -71,14 +71,16 @@ class Servicio:
         cuentas = {}
         for k, d in sugerido.items():
             ant = previo.get(k, {}).get('cuenta', '')
-            valida = ant and plan.get(ant) and (k not in CONCEPTOS_CUENTA_FIJA or plan.get(ant).es_hoja)
+            valida = (ant and plan.get(ant) and previo.get(k, {}).get('confirmado')
+                      and (k not in CONCEPTOS_CUENTA_FIJA or plan.get(ant).acepta_movimiento))
             cuentas[k] = ant if valida else d.cuenta     # se respeta lo confirmado antes si sigue siendo válido
         self.db.guardar_mapa(ruc, cuentas, confirmado=False)
         return plan, avisos
 
     def plan(self, ruc: str) -> PlanCuentas:
         e = self.db.empresa(ruc) or {}
-        p = PlanCuentas([Cuenta(r['codigo'], r['descripcion'], tipo=r.get('tipo', '')) for r in self.db.plan(ruc)],
+        p = PlanCuentas([Cuenta(r['codigo'], r['descripcion'], tipo=r.get('tipo') or '', movimiento=r.get('movimiento') or '')
+                         for r in self.db.plan(ruc)],
                         empresa=e.get('nombre', ''), ruc=ruc)
         p.reindex()
         return p
@@ -93,10 +95,14 @@ class Servicio:
             cu = plan.get(cod) if cod else None
             d = Destino(k)
             if cu:
-                d.cuenta, d.es_grupo = cod, not cu.es_hoja
-                d.hojas = [h.codigo for h in plan.hojas_bajo(cod)] if d.es_grupo else []
-                if d.es_grupo and k in CONCEPTOS_CUENTA_FIJA:
-                    d.nota = f'{cod} es cuenta de título: elija una subcuenta'
+                if k in CONCEPTOS_CUENTA_FIJA:            # caja, CxC, anticipos: la cuenta tal cual si acepta movimiento
+                    d.cuenta, d.es_grupo = cod, not cu.acepta_movimiento
+                    d.hojas = [h.codigo for h in opciones_fijas(plan, k, cod)] if d.es_grupo else []
+                    if d.es_grupo:
+                        d.nota = f'{cod} es cuenta de título: elija una subcuenta'
+                else:
+                    d.cuenta, d.es_grupo = cod, not cu.es_hoja
+                    d.hojas = [h.codigo for h in plan.hojas_bajo(cod)] if d.es_grupo else []
             res[k] = d
         confirmado = bool(filas) and all(r.get('confirmado') for r in filas.values())
         return res, confirmado
