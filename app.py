@@ -17,7 +17,7 @@ import streamlit as st
 
 from motor import __version__
 from motor.clasificador_ventas import ConfigEmpresa, actividad_desde_rubro
-from motor.conceptos import CONCEPTOS, palabras_clave
+from motor.conceptos import CONCEPTOS, CONCEPTOS_CUENTA_FIJA, opciones_fijas, palabras_clave, validar_mapa
 from motor.db import url_local
 from motor.edicion import aplicar_ediciones, ref_de
 from motor.filtros import filtrar
@@ -321,23 +321,46 @@ with t_plan:
     else:
         mapa, confirmado = S.mapa(ss.ruc, plan)
         st.markdown('#### Mapa de conceptos ' + ('✅ confirmado' if confirmado else '⚠️ sin confirmar'))
-        st.caption('Cada concepto se traduce a una cuenta del plan de esta empresa. Si la cuenta tiene subcuentas '
-                   '(ej. 70321 → 7032101, 7032102…), la app elige la subcuenta por las palabras de los ítems.')
+        st.caption('Cada concepto se traduce a una cuenta del plan de esta empresa. En las cuentas de ventas (70…), si la '
+                   'cuenta tiene subcuentas (ej. 70321 → 7032101, 7032102…), la app elige la subcuenta por las palabras de los '
+                   'ítems. Caja, cuentas por cobrar y anticipos deben ser una cuenta de movimiento: si en el plan la 1011 '
+                   'tiene subcuentas (1011001, 1011002…), escriba la que corresponda.')
+
+        def _subcuentas(k, d):
+            if k in CONCEPTOS_CUENTA_FIJA and d.cuenta:
+                ops = opciones_fijas(plan, k, d.cuenta)
+                return '; '.join(f'{h.codigo} {h.descripcion[:30]}' for h in ops[:6]) if len(ops) > 1 else ''
+            return ', '.join(d.hojas[:6]) + (' …' if len(d.hojas) > 6 else '')
+
+        def _nota(k, d):
+            if k in CONCEPTOS_CUENTA_FIJA and d.es_grupo:
+                return '⚠️ Es cuenta de título: escriba una subcuenta'
+            if k in CONCEPTOS_CUENTA_FIJA and len(opciones_fijas(plan, k, d.cuenta)) > 1 and not confirmado:
+                return 'Revise: hay varias subcuentas'
+            return ''
+
+        for k in CONCEPTOS_CUENTA_FIJA:
+            d = mapa.get(k)
+            ops = opciones_fijas(plan, k, d.cuenta) if d and d.cuenta else []
+            if len(ops) > 1 and (d.es_grupo or not confirmado):
+                st.warning(f'**{CONCEPTOS[k].nombre}** ({k}): en este plan hay varias cuentas posibles. '
+                           + (f'Se propone **{d.cuenta}**. ' if not d.es_grupo else f'**{d.cuenta}** es de título. ')
+                           + 'Escriba en "Cuenta" la que corresponda: '
+                           + ' · '.join(f'{h.codigo} {h.descripcion[:40]}' for h in ops[:8]), icon='⚠️')
         df = pd.DataFrame([{'Concepto': k, 'Descripción': CONCEPTOS[k].nombre,
                             'Obligatorio': '✔' if CONCEPTOS[k].obligatorio else '',
                             'Cuenta': d.cuenta,
+                            'Nota': _nota(k, d),
                             'Cuenta en el plan': (plan.get(d.cuenta).descripcion[:60] if d.cuenta and plan.get(d.cuenta) else ''),
-                            'Subcuentas': ', '.join(d.hojas[:6]) + (' …' if len(d.hojas) > 6 else '')} for k, d in mapa.items()])
+                            'Subcuentas / opciones': _subcuentas(k, d)} for k, d in mapa.items()])
         ed = st.data_editor(df, hide_index=True, use_container_width=True, disabled=['Concepto', 'Descripción', 'Obligatorio',
-                                                                                     'Cuenta en el plan', 'Subcuentas'],
-                            key=f'mapa_{ss.ruc}_{ss.ver}')
+                                                                                     'Cuenta en el plan', 'Nota',
+                                                                                     'Subcuentas / opciones'],
+                            height=35 * (len(df) + 1) + 3, key=f'mapa_{ss.ruc}_{ss.ver}')
         if st.button('Confirmar mapa', type='primary'):
-            malas = [f"{r['Concepto']}: {_s(r['Cuenta'])}" for _, r in ed.iterrows() if _s(r['Cuenta']) and not plan.get(_s(r['Cuenta']))]
-            faltan = [r['Concepto'] for _, r in ed.iterrows() if CONCEPTOS[r['Concepto']].obligatorio and not _s(r['Cuenta'])]
-            if malas:
-                st.error('Cuentas que no existen en el plan: ' + '; '.join(malas))
-            elif faltan:
-                st.error('Faltan conceptos obligatorios: ' + ', '.join(faltan))
+            errores = validar_mapa(plan, {r['Concepto']: _s(r['Cuenta']) for _, r in ed.iterrows()})
+            if errores:
+                st.error('No se puede confirmar el mapa:\n\n' + '\n'.join(f'- {e}' for e in errores))
             else:
                 S.guardar_mapa(ss.ruc, {r['Concepto']: _s(r['Cuenta']) for _, r in ed.iterrows()})
                 ss.ver += 1
@@ -436,6 +459,10 @@ with t_ventas:
     op_base = sorted({c for c in hojas if c[:2] in ('70', '75', '12', '16', '45', '46', '49')} | {f.cuenta_base for f in lote.filas if f.cuenta_base})
     op_total = sorted({c for c in hojas if c[:2] in ('10', '12', '13', '14', '16', '17')} | {f.cuenta_total for f in lote.filas if f.cuenta_total})
 
+    def _etq(c):
+        cu = plan.get(c)
+        return f'{c} · {cu.descripcion[:35]}' if cu else str(c)
+
     def tabla(filas, editable=True, key=''):
         if not filas:
             st.caption('Sin filas.')
@@ -457,8 +484,12 @@ with t_ventas:
             'Total': st.column_config.NumberColumn(format='%.2f'),
             'TC': st.column_config.NumberColumn(format='%.3f'),
             'Cond': st.column_config.SelectboxColumn(options=['CON', 'CRE'], width='small'),
-            'AB cuenta': st.column_config.SelectboxColumn(options=op_base, help='Cuenta de ventas (elemento 7) o 1221 si es anticipo'),
-            'AD cuenta': st.column_config.SelectboxColumn(options=op_total, help='Cuenta del total: 1011/1012 contado, 1212 crédito'),
+            'AB cuenta': st.column_config.SelectboxColumn(options=op_base, format_func=_etq,
+                                                          help='Cuenta de ventas (elemento 7) o 1221 si es anticipo'),
+            'AD cuenta': st.column_config.SelectboxColumn(options=op_total, format_func=_etq,
+                                                          help='Cuenta del total: caja (1011… / 1012) al contado, 1212 al crédito. '
+                                                               'Solo cuentas de movimiento: si la 1011 tiene subcuentas, '
+                                                               'aparecen 1011001, 1011002…'),
             'Anticipo': st.column_config.CheckboxColumn(help='Marque si es un comprobante de anticipo (va a 1221)'),
             'Glosa': st.column_config.TextColumn(max_chars=60),
             'Doc. modificado': st.column_config.TextColumn(max_chars=14, help='Solo notas de crédito/débito: comprobante que '

@@ -358,3 +358,26 @@ def test_buscador_y_filtros(correr, tc):
     assert filtrar(filas, 'NO EXISTE NADIE') == []
     assert len(filtrar(filas, 'E001')) == 28                           # toda la serie
     assert filtrar(filas, moneda='D') == [] and len(filtrar(filas, tipos=['01'])) == 28
+
+
+def test_caja_con_subcuentas_debe_ser_cuenta_de_movimiento():
+    """Plan donde 1011 es título (1011001 tarjeta, 1011002 varios, 1011003 efectivo): NewContaSis no acepta
+    asientos en 1011, así que la app propone una subcuenta y no deja confirmar 1011."""
+    from motor.conceptos import opciones_fijas, sugerir_mapa, validar_mapa
+    from motor.plan_cuentas import Cuenta, PlanCuentas
+    plan = PlanCuentas([Cuenta(c, d) for c, d in [
+        ('10', 'EFECTIVO'), ('101', 'CAJA'), ('1011', 'CAJA MN'), ('1011001', 'CAJA TC - TARJETAS'),
+        ('1011002', 'CAJA TC - VARIOS'), ('1011003', 'CAJA EFECTIVO'), ('1012', 'CAJA ME'),
+        ('12', 'CXC'), ('121', 'FACTURAS'), ('1212', 'EMITIDAS EN CARTERA'), ('122', 'ANTICIPOS'), ('1221', 'ANTICIPOS'),
+        ('70', 'VENTAS'), ('701', 'MERCADERIAS'), ('7012', 'VENTA LOCAL'), ('70121', 'TERCEROS'),
+        ('703', 'SERVICIOS'), ('7032', 'LOCAL'), ('70321', 'TERCEROS')]])
+    plan.reindex()
+    m = sugerir_mapa(plan)
+    assert (m['CAJA_PEN'].cuenta, m['CAJA_PEN'].es_grupo) == ('1011003', False) and 'Revise' in m['CAJA_PEN'].nota
+    assert [h.codigo for h in opciones_fijas(plan, 'CAJA_PEN', '1011003')] == ['1011001', '1011002', '1011003']
+    assert opciones_fijas(plan, 'CXC_PEN', '1212') == [] and opciones_fijas(plan, 'CAJA_USD', '1012') == []
+    cuentas = {k: d.cuenta for k, d in m.items()}
+    assert validar_mapa(plan, cuentas) == []
+    cuentas['CAJA_PEN'] = '1011'
+    err = validar_mapa(plan, cuentas)
+    assert len(err) == 1 and 'cuenta de título' in err[0] and '1011003 CAJA EFECTIVO' in err[0]

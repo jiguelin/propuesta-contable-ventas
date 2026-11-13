@@ -484,7 +484,12 @@ def cuenta_total(f: Fila, ctx: Contexto) -> str:
         d = ctx.cuenta_de('CAJA_USD' if usd else 'CAJA_PEN')
     else:
         d = ctx.cuenta_de('CXC_USD' if usd else 'CXC_PEN')
-    return d.cuenta if d and not d.es_grupo else (d.hojas[0] if d and d.hojas else '')
+    if d and d.es_grupo and d.hojas:
+        aviso = f'{d.cuenta} es cuenta de título: se usó {d.hojas[0]}. Elija la correcta en ② Plan y conceptos'
+        if aviso not in f.avisos:
+            f.avisos.append(aviso)
+        return d.hojas[0]
+    return d.cuenta if d and not d.es_grupo else ''
 
 
 # ----------------------------------------------------------------------------- principal

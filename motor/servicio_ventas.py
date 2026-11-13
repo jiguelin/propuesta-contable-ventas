@@ -7,7 +7,7 @@ from __future__ import annotations
 from dataclasses import asdict
 
 from .clasificador_ventas import ConfigEmpresa, Contexto, actividad_desde_rubro, firma
-from .conceptos import CONCEPTOS, Destino, sugerir_mapa
+from .conceptos import CONCEPTOS, CONCEPTOS_CUENTA_FIJA, Destino, sugerir_mapa, validar_mapa
 from .centros_costos import leer_centros_excel, sugerir as sugerir_centros
 from .db import BaseDatos
 from .entidades import Entidad, Entidades, RegistroExterior, leer_entidades_excel
@@ -71,7 +71,8 @@ class Servicio:
         cuentas = {}
         for k, d in sugerido.items():
             ant = previo.get(k, {}).get('cuenta', '')
-            cuentas[k] = ant if ant and plan.get(ant) else d.cuenta     # se respeta lo confirmado antes si sigue existiendo
+            valida = ant and plan.get(ant) and (k not in CONCEPTOS_CUENTA_FIJA or plan.get(ant).es_hoja)
+            cuentas[k] = ant if valida else d.cuenta     # se respeta lo confirmado antes si sigue siendo válido
         self.db.guardar_mapa(ruc, cuentas, confirmado=False)
         return plan, avisos
 
@@ -94,11 +95,16 @@ class Servicio:
             if cu:
                 d.cuenta, d.es_grupo = cod, not cu.es_hoja
                 d.hojas = [h.codigo for h in plan.hojas_bajo(cod)] if d.es_grupo else []
+                if d.es_grupo and k in CONCEPTOS_CUENTA_FIJA:
+                    d.nota = f'{cod} es cuenta de título: elija una subcuenta'
             res[k] = d
         confirmado = bool(filas) and all(r.get('confirmado') for r in filas.values())
         return res, confirmado
 
     def guardar_mapa(self, ruc: str, cuentas: dict[str, str]):
+        errores = validar_mapa(self.plan(ruc), cuentas)
+        if errores:
+            raise ValueError(' · '.join(errores))
         self.db.guardar_mapa(ruc, cuentas, confirmado=True)
 
     # ------------------------------------------------------------ entidades
