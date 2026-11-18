@@ -2,7 +2,8 @@
 """
 motor/db.py — Base de datos propia de la app de ventas (no se conecta a la de compras).
 
-Postgres (Supabase o Neon) en producción: DATABASE_URL = "postgresql+psycopg2://usuario:clave@host/base".
+Postgres (Neon o Supabase) en producción: DATABASE_URL = la dirección que da Neon, tal cual
+("postgresql://usuario:clave@ep-….neon.tech/neondb?sslmode=require…").
 Sin DATABASE_URL usa SQLite local en datos/ventas.db (sirve para pruebas; en Streamlit Cloud se borra
 al reiniciar la app).
 """
@@ -13,10 +14,24 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-from sqlalchemy import (Boolean, Column, Float, Integer, MetaData, String, Table, Text, create_engine, delete,
-                        func, insert, select, update)
+from sqlalchemy import (Boolean, Column, Float, Integer, MetaData, String as _String, Table, Text, TypeDecorator,
+                        create_engine, delete, func, insert, select, update)
 
 meta = MetaData()
+
+
+class String(TypeDecorator):
+    """VARCHAR(n) que recorta el texto al largo de la columna antes de guardarlo. Postgres (Neon) rechaza un
+    texto más largo que la columna y SQLite no: así un dato inesperado (un nombre o una dirección muy larga)
+    nunca hace caer la app en producción."""
+    impl = _String
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        n = self.impl.length
+        if isinstance(value, str) and n and len(value) > n:
+            return value[:n]
+        return value
 
 empresas = Table('empresas', meta,
                  Column('ruc', String(11), primary_key=True),
@@ -106,14 +121,27 @@ def url_local() -> str:
     return f'sqlite:///{ruta}'
 
 
+def normalizar_url(url: str) -> str:
+    """Acepta la dirección tal como la copia Neon o Supabase (postgresql://… o postgres://…, con o sin comillas)
+    y la deja para SQLAlchemy con el controlador psycopg2."""
+    url = (url or '').strip().strip('"').strip("'").strip()
+    for prefijo in ('postgres://', 'postgresql://'):
+        if url.startswith(prefijo):
+            return 'postgresql+psycopg2://' + url[len(prefijo):]
+    return url
+
+
 class BaseDatos:
     def __init__(self, url: str | None = None):
-        url = url or os.environ.get('DATABASE_URL') or url_local()
-        if url.startswith('postgres://'):            # formato de Heroku/Supabase antiguo
-            url = 'postgresql+psycopg2://' + url[len('postgres://'):]
+        url = normalizar_url(url or os.environ.get('DATABASE_URL') or url_local())
         self.url = url
         self.es_sqlite = url.startswith('sqlite')
-        self.engine = create_engine(url, pool_pre_ping=True, future=True)
+        self.es_neon = 'neon.tech' in url
+        opciones = {} if self.es_sqlite else {
+            'pool_recycle': 240,                      # Neon se apaga tras 5 min sin uso: no reusar conexiones viejas
+            'connect_args': {'connect_timeout': 20},   # el primer acceso despierta la base (1–2 s)
+        }
+        self.engine = create_engine(url, pool_pre_ping=True, future=True, **opciones)
         meta.create_all(self.engine)
         self._migrar()
 

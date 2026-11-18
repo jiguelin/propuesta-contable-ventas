@@ -82,8 +82,13 @@ if not acceso():
 
 
 @st.cache_resource
+def _servicio_en(url: str, clave_ia: str | None) -> Servicio:
+    return Servicio(db_url=url, api_key=clave_ia)      # si falla, no se guarda en caché y se reintenta
+
+
 def servicio() -> tuple[Servicio, str]:
-    """Devuelve (servicio, aviso). Si DATABASE_URL falla, sigue con la base temporal y avisa."""
+    """Devuelve (servicio, aviso). Si DATABASE_URL falla, sigue con la base temporal, avisa y vuelve a intentar
+    conectarse en la siguiente acción (la base de Neon puede estar despertando)."""
     url = secreto('DATABASE_URL')
     clave_ia = secreto('ANTHROPIC_API_KEY')
     if clave_ia and (' ' in clave_ia or clave_ia.endswith('...') or 'poner' in clave_ia.lower()):
@@ -91,12 +96,13 @@ def servicio() -> tuple[Servicio, str]:
     if url and ('usuario:clave@host' in url or '@host:' in url or url.strip().endswith('...')):
         url = None          # es el texto de ejemplo: se trata como si no hubiera base configurada
     if not url:
-        return Servicio(db_url=url_local(), api_key=clave_ia), ''
+        return _servicio_en(url_local(), clave_ia), ''
     try:
-        return Servicio(db_url=url, api_key=clave_ia), ''
+        return _servicio_en(url, clave_ia), ''
     except Exception as ex:   # base caída, clave equivocada, etc.: la app no debe quedar inutilizable
-        return Servicio(db_url=url_local(), api_key=clave_ia), (f'No se pudo conectar a DATABASE_URL ({ex.__class__.__name__}); '
-                                                          'se usa la base temporal. Revise la dirección en Secrets.')
+        return _servicio_en(url_local(), clave_ia), (
+            f'No se pudo conectar a la base de datos ({ex.__class__.__name__}). Por ahora se usa la base temporal: '
+            'lo que haga no quedará guardado. Revise DATABASE_URL en Secrets o recargue la página en un minuto.')
 
 
 S, aviso_db = servicio()
@@ -148,7 +154,7 @@ with st.sidebar:
     st.divider()
     st.caption(f'v{__version__} · Acceso: {"🔒 con clave" if secreto("APP_PASSWORD") else "🔓 sin clave"} · '
                f'IA: {"activa" if S.api_key else "sin clave (solo reglas)"} · '
-               f'Base: {"SQLite local (temporal)" if S.db.es_sqlite else "Postgres"}')
+               f'Base: {"SQLite local (temporal)" if S.db.es_sqlite else ("Neon (permanente)" if S.db.es_neon else "Postgres (permanente)")}')
 
 st.title('🧾 Propuesta Contable de Ventas')
 st.caption('XML de ventas del mes → Excel listo para importar en NewContaSis (Registro de Ventas), con cuentas, '

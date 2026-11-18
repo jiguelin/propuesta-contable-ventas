@@ -20,6 +20,30 @@ DATOS = RAIZ / 'tests' / 'datos'
 JOYERIA, MINERA, ESTUDIO = '20000000101', '20000000102', '20000000100'
 
 
+@pytest.fixture
+def db_url(tmp_path):
+    """Base para las pruebas con base de datos. Por defecto SQLite temporal. Con la variable TEST_PG_URL
+    (ej. postgresql+psycopg2://postgres@/postgres?host=/tmp&port=5433) se crea una base Postgres nueva por
+    prueba y se borra al final: así se prueba lo mismo que corre con Neon."""
+    import os
+    import uuid
+    pg = os.environ.get('TEST_PG_URL')
+    if not pg:
+        yield f'sqlite:///{tmp_path / "t.db"}'
+        return
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.engine import make_url
+    nombre = 'prueba_' + uuid.uuid4().hex[:10]
+    admin = create_engine(pg, isolation_level='AUTOCOMMIT')
+    with admin.connect() as cx:
+        cx.execute(text(f'CREATE DATABASE {nombre}'))
+    yield make_url(pg).set(database=nombre).render_as_string(hide_password=False)
+    from sqlalchemy.pool import NullPool  # noqa: F401
+    with admin.connect() as cx:
+        cx.execute(text(f'DROP DATABASE IF EXISTS {nombre} WITH (FORCE)'))
+    admin.dispose()
+
+
 @pytest.fixture(scope='session')
 def plan():
     return leer_plan_excel(DATOS / 'plan_prueba.xlsx')

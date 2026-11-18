@@ -9,8 +9,8 @@ from motor.servicio_ventas import Servicio
 
 
 @pytest.fixture
-def servicio(tmp_path):
-    s = Servicio(db_url=f'sqlite:///{tmp_path / "t.db"}')
+def servicio(db_url):
+    s = Servicio(db_url=db_url)
     s.cargar_tc('tc.pdf', (DATOS / 'tipocambio_2026-09.pdf').read_bytes())
     return s
 
@@ -105,3 +105,22 @@ def test_cargar_centros_de_costos(servicio, tmp_path):
     assert len(items) == 4 and cfg.usar_centro_costos and (cfg.cc_servicios, cfg.cc_mercaderia) == ('0104', '0105')
     lote, _ = servicio.procesar(ESTUDIO, '2026-09', [('f.xml', comprobante('F001-1'))], usar_ia=False)
     assert lote.filas[0].centro_costos == '0104'
+
+
+def test_textos_largos_no_rompen_postgres(db_url):
+    """Postgres (Neon) rechaza textos más largos que la columna; la base los recorta en vez de fallar."""
+    from motor.db import BaseDatos
+    db = BaseDatos(db_url)
+    db.guardar_empresa('20000000199', 'X' * 250, {})
+    assert db.empresa('20000000199')['nombre'] == 'X' * 200
+    db.aprender('20000000199', '123456789012345678901234', 'PALABRA' * 40, '70121')
+    db.guardar_tc([{'fecha': '2026-09-01', 'compra': 3.3, 'venta': 3.4, 'fuente': 'F' * 60}])
+    assert db.tipos_cambio()[0]['fuente'] == 'F' * 40
+
+
+def test_direccion_de_neon_tal_cual():
+    from motor.db import normalizar_url
+    neon = 'postgresql://u:p@ep-abc-pooler.us-west-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require'
+    assert normalizar_url(f' "{neon}" ') == 'postgresql+psycopg2://' + neon[len('postgresql://'):]
+    assert normalizar_url('postgres://u:p@h/db') == 'postgresql+psycopg2://u:p@h/db'
+    assert normalizar_url('sqlite:///x.db') == 'sqlite:///x.db'

@@ -13,11 +13,11 @@ APP = Path(__file__).resolve().parent.parent / 'app.py'
 
 
 @pytest.fixture
-def app_con_empresa(tmp_path, monkeypatch):
+def app_con_empresa(db_url, monkeypatch):
     from streamlit.testing.v1 import AppTest
     import streamlit as st
     from motor.servicio_ventas import Servicio
-    url = f'sqlite:///{tmp_path / "app.db"}'
+    url = db_url
     monkeypatch.setenv('DATABASE_URL', url)
     monkeypatch.delenv('APP_PASSWORD', raising=False)
     s = Servicio(db_url=url)

@@ -62,8 +62,20 @@ XML / ZIP ─▶ lector UBL (corrige codificación) ─▶ ¿es de la empresa y 
 3. Cada cambio que se sube al repositorio se publica solo.
 
 > Sin `DATABASE_URL` la app usa una base SQLite temporal: en Streamlit Cloud **se borra al reiniciar**
-> (planes, mapas, memoria y códigos de clientes del exterior). Para trabajar en serio, configure Postgres
-> (Supabase o Neon tienen plan gratuito).
+> (planes, mapas, memoria y códigos de clientes del exterior).
+
+### Base permanente con Neon
+
+1. En https://console.neon.tech → **New project**: nombre `propuesta-contable-ventas`, Postgres 17 y región
+   **AWS US West 2 (Oregon)**, la más cercana a los servidores de Streamlit Community Cloud.
+2. En el proyecto → **Connect** → copiar la dirección (empieza con `postgresql://`).
+3. En Streamlit Cloud → la app → **Settings → Secrets**, agregar una línea con esa dirección entre comillas:
+   `DATABASE_URL = "postgresql://…"` y guardar. La app se reinicia sola.
+4. La barra lateral debe decir **Base: Neon (permanente)**. Las tablas se crean solas la primera vez.
+
+La dirección incluye la clave de la base: va solo en Secrets, nunca en el repositorio ni en mensajes.
+Si la conexión falla, la app avisa en rojo, sigue con la base temporal y vuelve a intentar en la siguiente acción.
+Pruebas contra Postgres: `TEST_PG_URL="postgresql+psycopg2://…" python -m pytest -q`.
 
 ## Línea de comandos
 
